@@ -12,8 +12,8 @@ assert.equal(JSON.parse(signed.payload).Query, '中文黑客松');
 const directed = await signRequest('征文 报名', 'AKIDsyntheticTestOnly00000000', 'synthetic-key-only', 1792782000, {site:'csdn.net',freshness:'d30'});
 assert.deepEqual(JSON.parse(directed.payload),{Query:'征文 报名',Cnt:10,Mode:0,Freshness:'d30',Site:'csdn.net'});
 assert.notEqual(directed.authorization,signed.authorization);
-assert.equal(directedQuery('征文','essay'),'征文 报名 参赛规则 截止时间');
-assert.equal(directedQuery('文学','essay'),'文学 征文 报名 参赛规则 截止时间');
+assert.equal(directedQuery('征文','essay'),'征文 技术征文 软件开发 技术实践 报名 参赛规则 截止时间');
+assert.equal(directedQuery('文学','essay'),'文学 技术征文 软件开发 技术实践 报名 参赛规则 截止时间');
 assert(!directedQuery('文学','essay').includes('AI'));
 await assert.rejects(()=>signRequest('test','synthetic','synthetic',1792782000,{site:'evil.test'}));
 
@@ -64,7 +64,7 @@ function fixture({complete=true,admin=false,fail=false,excluded=false}={}){
   const s=fixture({excluded:true});s.nodes.q.value='文学';s.nodes['online-type'].value='essay';
   s.nodes['online-site'].value='csdn.net';s.nodes['online-freshness'].value='d30';
   await s.nodes['online-type'].fire('change');assert.equal(s.requests.length,0);
-  assert.match(s.nodes['online-query-preview'].textContent,/文学 征文 报名/);
+  assert.match(s.nodes['online-query-preview'].textContent,/文学 技术征文 软件开发 技术实践 报名/);
   await s.nodes['online-find'].fire('click');
   assert.equal(s.signedOptions[0].site,'csdn.net');assert.equal(s.signedOptions[0].freshness,'d30');
   assert.equal(s.requests.filter(r=>r.path==='/api/online-search').length,1);

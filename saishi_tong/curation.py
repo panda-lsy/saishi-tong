@@ -507,6 +507,9 @@ def commit_result(job_id, contest_id, fingerprint, result, *, model="", path=Non
             updated.verification_notes = list(dict.fromkeys(previous_notes + notes))[:24]
             updated.uncertain_fields = sorted({f for f in checked["uncertain"] if f in FACT_FIELDS} | set(kept))
             updated.luna_state = "verified" if checked["verdict"] == "verified" else "review"
+            from .contest_scope import classify_scope
+            if classify_scope(updated)=='out_of_scope':
+                updated.verification_notes.append('收录范围外：普通作文或文化征文不是本站开发、计算机类赛事，不得确认发布。')
             updated.luna_model = model_label
             updated.luna_verified_at = _utc()
             updated.ai_reviewed_at = updated.luna_verified_at

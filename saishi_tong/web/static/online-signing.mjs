@@ -8,9 +8,10 @@ const hmac = async (key, value) => {
 };
 
 export function directedQuery(raw, type = '') {
-  const types = { hackathon: '黑客松', essay: '征文', developer: '开发者竞赛' };
+  const types = { hackathon: '黑客松', essay: '技术征文', developer: '开发者竞赛' };
   let query = raw.trim() || types[type] || 'AI 黑客松 征文 开发者竞赛';
   if (types[type] && !query.includes(types[type])) query += ' ' + types[type];
+  if (/征文/.test(query) && !/软件开发|编程|计算机|开发者/.test(query)) query += ' 软件开发 技术实践';
   return query + ' 报名 参赛规则 截止时间';
 }
 

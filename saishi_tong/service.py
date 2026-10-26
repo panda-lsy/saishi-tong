@@ -123,6 +123,8 @@ def run_search(
 
     search_time = _now_iso()
     cards = dedupe(pages_to_cards([r for r in responses if not r.get("error")], search_time=search_time))
+    from .contest_scope import classify_scope
+    cards = [c for c in cards if classify_scope(c) != 'out_of_scope']
     # Model errors never block search; states/warnings remain explicit.
     cards, warnings, luna_stats = process_cards(cards, adapter=luna_adapter, enabled=luna_enabled)
     if warnings:

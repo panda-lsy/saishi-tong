@@ -1,12 +1,15 @@
 """Conservative retrieval triage, independent of AI/human verification."""
 import re
 from urllib.parse import urlsplit
+from .contest_scope import classify_scope
 
 
 def assess(page):
     title = page.get('title', '')
     text = '\n'.join(page.get(k, '') for k in ('title', 'passage', 'content'))
     source=urlsplit(page.get('url',''))
+    if classify_scope(page)=='out_of_scope':
+        return {'kind':'收录范围外','retain':False,'reason':'本站仅收录开发、计算机类赛事；普通作文、文学及文化主题征文不收录，提到AI主题也不能替代技术参赛要求。'}
     if (source.hostname or '').lower() in {'modelscope.cn','www.modelscope.cn'} and re.match(r'^/(?:models|datasets|skills)/',source.path):
         return {'kind':'资源页面','retain':False,'reason':'模型、数据集或技能资源页，需找到具体赛事活动页再收录。'}
     if re.search(r'创作手记|参赛(?:作品|总结)|^\s*(?:魔搭|CSDN)?\s*(?:日报|周报)',title,re.I):

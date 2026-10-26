@@ -197,6 +197,10 @@ def commit(job_id, claim_key, result, model='', worker='jarvis', path=None):
             card.snippet = card.summary
             card.sources = [{k: s[k] for k in ('url','title','excerpt')} for s in checked['sources']]
             card.source_excerpt = card.sources[0]['excerpt']
+            from .contest_scope import classify_scope
+            if classify_scope(card)=='out_of_scope':
+                skipped += 1
+                continue
             card.luna_model = 'openclaw/saishi:' + model
             card.luna_verified_at = curation._utc()
             card.luna_input_hash = input_hash(card)

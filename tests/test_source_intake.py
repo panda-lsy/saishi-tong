@@ -94,6 +94,15 @@ class SourceIntakeTests(unittest.TestCase):
         self.assertEqual(sources.list_jobs()[0]['results'][0]['search_time'], card['search_time'])
         self.assertEqual(sources.commit(job['id'], claim['claim_key'], payload, 'openai/gpt-6-luna')['results'], output['results'])
 
+    def test_real_but_non_computing_contest_is_not_imported(self):
+        job,claim=self.create_claim()
+        result=self.result()
+        result['fields']['contest_name']='世界华人学生作文大赛'
+        result['sources'][0]['title']='世界华人学生作文大赛'
+        output=sources.commit(job['id'],claim['claim_key'],{'contests':[result]},'synthetic/model')
+        self.assertEqual(output['results'],[]);self.assertEqual(output['skipped'],1)
+        self.assertEqual(store.list_contests(include_drafts=True),[])
+
     def test_invalid_second_record_rolls_back_all_inserts(self):
         job, claim = self.create_claim()
         invalid = self.result('https://example.test/other'); invalid['fields'] = []

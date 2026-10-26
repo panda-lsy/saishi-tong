@@ -1,8 +1,8 @@
 # 赛事通 · saishi-tong
 
-用腾讯元宝 SearchPro 发现赛事，以来源证据和审核流程把网页线索整理成可查询的中文赛历。
+用腾讯元宝 SearchPro 发现开发、计算机类赛事，以来源证据和审核流程把线索整理成可查询的中文技术赛历。仅收录技术比赛与技术实践征文，不接收普通学生作文或文学文化征文；题目提到AI不能替代技术参赛要求。
 
-演示：https://competition.shengxia.me/ · 版本：0.2.0 · 许可证：[MIT](LICENSE)
+演示：https://competition.shengxia.me/ · 版本：0.2.1 · 许可证：[MIT](LICENSE)
 
 ## 功能
 

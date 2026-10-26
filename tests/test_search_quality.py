@@ -15,10 +15,10 @@ FIXTURE=Path(__file__).parent/'fixtures/online-search-20261025.json'
 
 
 class SearchQualityTests(unittest.TestCase):
-    def test_real_search_batches_exclude_three_explanation_pages_only(self):
+    def test_real_search_batches_apply_technical_scope_as_well_as_page_quality(self):
         samples=json.loads(FIXTURE.read_text(encoding='utf-8-sig'))
         self.assertEqual(len(samples),20)
-        for query,expected in [('征文',7),('黑客松 征文 比赛',10)]:
+        for query,expected in [('征文',0),('黑客松 征文 比赛',10)]:
             pages=[r['page'] for r in samples if r['Query']==query]
             with patch.object(online_search,'upstream',return_value={'Pages':pages}):
                 result=online_search.search_results(envelope(query))
@@ -28,11 +28,7 @@ class SearchQualityTests(unittest.TestCase):
             self.assertEqual(result['counts']['invalid'],0)
             self.assertTrue(all(c.luna_state=='pending' and not c.human_reviewed_at for c in result['cards']))
             self.assertFalse(any(c.host in {'者后','腾讯新闻','中国日报网','百问网','中国作家网'} or c.host.startswith('方:') for c in result['cards']))
-            if query=='征文':
-                actual=next(c for c in result['cards'] if '世界华人学生' in c.raw_title)
-                self.assertEqual(actual.deadline,'2026年11月30日')
-                self.assertEqual(actual.host,'中国侨联、全国台联')
-            else:
+            if query!='征文':
                 ended=next(c for c in result['cards'] if '鼓楼江岸' in c.raw_title)
                 self.assertEqual(ended.status,'已结束')
 

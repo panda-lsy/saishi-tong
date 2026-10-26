@@ -9,7 +9,7 @@
 <form id="search-form" method="get" action="/contests" aria-describedby="search-help"><label class="sr-only" for="q">本地赛事关键词</label><div class="search-row"><span class="search-icon" aria-hidden="true">⌕</span><input type="search" name="q" id="q" placeholder="试试：AI Agent、黑客松、征文" autocomplete="off"><button class="btn-primary" id="go" type="submit"><span class="button-label">查找本地赛事 ↗</span></button><button id="online-find" type="button" class="btn btn-dark" hidden>在线查找 ↗</button></div></form>
 <p class="helper" id="search-help">仅查询本站已收录的本地赛事，不联网、不发送密钥。更多状态和形式筛选请进入赛事目录。<a href="/settings#local-keys">配置本浏览器搜索密钥</a>后可使用在线查找。</p>
 <details id="online-options" class="online-options" hidden><summary>在线查找条件</summary><div class="online-option-grid">
-<label for="online-type">赛事类型<select id="online-type"><option value="">不限类型</option><option value="hackathon">黑客松</option><option value="essay">征文</option><option value="developer">开发者竞赛</option></select></label>
+<label for="online-type">赛事类型<select id="online-type"><option value="">不限技术赛事类型</option><option value="hackathon">黑客松</option><option value="essay">技术征文</option><option value="developer">开发者竞赛</option></select></label>
 <label for="online-site">来源范围<select id="online-site"><option value="">全网</option><option value="csdn.net">CSDN</option><option value="modelscope.cn">魔搭</option></select></label>
 <label for="online-freshness">网页发布时间<select id="online-freshness"><option value="m3">近三个月</option><option value="d30">近30天</option><option value="y1">近一年</option></select></label></div>
 <p id="online-query-preview" class="helper"></p><p class="helper">每次点击调用1次元宝搜索，最多返回10个网页；修改条件不会自动搜索。发布时间不等于报名截止，站点限定不代表官方认证。</p></details>

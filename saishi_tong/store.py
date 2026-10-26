@@ -226,6 +226,8 @@ def list_contests(limit: int | None = None, *, include_drafts: bool = False,
     include_drafts=True is for internal/admin helpers (non-retired, not merged);
     it does not apply the verified filter.
     """
+    if not include_drafts:
+        return search_contests(limit=limit,path=path)
     conn = _connect(path)
     try:
         if include_drafts:
@@ -288,7 +290,8 @@ def search_contests(*, q: str = "", status: str | list[str] = "", format: str | 
             params = [pattern] * len(search_fields)
         sql += " ORDER BY search_time DESC, score DESC, id"
         cards = [_card_dict(row, current=True) for row in conn.execute(sql, params)]
-        cards = [c for c in cards if (not statuses or c["status"] in statuses)
+        from .contest_scope import classify_scope
+        cards = [c for c in cards if classify_scope(c) != 'out_of_scope' and (not statuses or c["status"] in statuses)
                  and (not formats or c["format"] in formats)
                  and (not locations or c['format'] in {'线下','混合'} and c['location_scope'] in locations)]
         return cards if limit is None else cards[:limit]
@@ -297,6 +300,8 @@ def search_contests(*, q: str = "", status: str | list[str] = "", format: str | 
 
 
 def count_contests(path: Path | None = None, *, include_drafts: bool = False) -> int:
+    if not include_drafts:
+        return len(search_contests(path=path))
     conn = _connect(path)
     try:
         if include_drafts:
@@ -313,6 +318,9 @@ def get_contest(contest_id: str, path: Path | None = None, *, include_drafts: bo
     try:
         where = "" if include_drafts else " AND publication_state = 'published' AND deleted_at = '' AND " + VERIFIED_SQL
         row = conn.execute("SELECT * FROM contests WHERE deleted_at = '' AND id = ?" + where, (contest_id,)).fetchone()
+        from .contest_scope import classify_scope
+        if row is not None and not include_drafts and classify_scope(_decode(row))=='out_of_scope':
+            return None
         return _card_dict(row, current=not include_drafts) if row is not None else None
     finally:
         conn.close()
@@ -437,6 +445,9 @@ def save_admin_contest(payload: dict, contest_id: str | None = None,
                 card.contest_name = card.name
             if not card.name or not safe_source_url(card.source_url) or not card.search_time:
                 raise ValueError("名称、真实来源 URL 和检索时间必填")
+            from .contest_scope import classify_scope
+            if (row is None or review is True or data.get('publication_state')=='published') and classify_scope(card)=='out_of_scope':
+                raise ValueError('收录范围不符：本站仅接收开发、计算机类赛事，普通作文及文化征文不能确认或发布')
             if not card.sources:
                 card.sources = [{"url": card.source_url, "title": card.name, "excerpt": ""}]
             if (row is not None and before_facts != facts_hash(card)
