@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Start 赛事通 web UI (binds 127.0.0.1:8787 by default)
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+export SAISHI_HOST="${SAISHI_HOST:-127.0.0.1}"
+export SAISHI_PORT="${SAISHI_PORT:-8787}"
+# Never source credential files. Python reads only approved admin/OAuth fields.
+# Strip inherited CAM material from this website process; CLI ingestion is separate.
+unset TENCENTCLOUD_SECRET_ID TENCENTCLOUD_SECRET_KEY TENCENTCLOUD_TOKEN
+if [[ -x "$ROOT/.venv/bin/python" ]]; then
+  PY="$ROOT/.venv/bin/python"
+else
+  PY="python3"
+fi
+exec "$PY" -m saishi_tong.web.app

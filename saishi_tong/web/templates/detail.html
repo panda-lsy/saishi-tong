@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "_contest.html" import badges, source %}
+{% set active = 'contests' %}
+{% block title %}{{ contest.contest_name|default('待核验赛事', true) }} · 赛事通{% endblock %}
+{% block content %}
+<nav class="breadcrumb" aria-label="面包屑"><a href="/contests">← 赛事目录</a><span aria-hidden="true">/</span><span>赛事详情</span></nav>
+<article class="detail">
+<header class="detail-heading"><p class="eyebrow">CONTEST BRIEF / 赛事线索</p>{{ badges(contest) }}<h1>{{ contest.contest_name|default('待核验赛事', true) }}</h1><p class="detail-deck">报名及参赛规则，请到原始来源确认。状态与参与形式为线索，不代表报名承诺。</p>
+<div class="detail-entry"><div><span class="helper">报名截止</span><p class="entry-deadline">{{ contest.deadline|default('待核验', true) }}</p></div>
+{% set signup = (contest.signup_url|default('', true)|string)|trim %}
+{% if (signup|lower).startswith('https://') or (signup|lower).startswith('http://') %}<a class="btn-primary signup-button" href="{{ signup }}" target="_blank" rel="noopener noreferrer">{% if contest.status == '已结束' %}查看官方活动页{% else %}前往官方报名页{% endif %} ↗<span class="sr-only">（新窗口打开，请核对当前报名状态）</span></a>{% else %}<p class="helper">报名入口待核验，请先查看下方来源。</p>{% endif %}</div>
+</header>
+<div class="detail-layout"><div class="detail-main">
+<section aria-labelledby="summary-title"><h2 id="summary-title">赛事摘要<span class="accent">。</span></h2><p class="detail-summary">{{ contest.summary|default(contest.snippet|default('暂无摘要，请核验原始来源。', true), true) }}</p></section>
+<section class="detail-source" aria-labelledby="timeline-title"><h2 id="timeline-title">时间安排</h2><p class="detail-summary">{{ contest.timeline|default('暂无明确安排，请向主办方核验。', true) }}</p></section>
+<section class="detail-source" aria-labelledby="eligibility-title"><h2 id="eligibility-title">参赛资格</h2><p class="detail-summary">{{ contest.eligibility|default('暂无明确资格信息，请核验活动规则。', true) }}</p></section>
+<section class="detail-source" aria-labelledby="prizes-title"><h2 id="prizes-title">奖金与奖励</h2><p class="detail-summary">{{ contest.prizes|default(contest.prize|default('待核验', true), true) }}</p></section>
+<section class="detail-source" aria-labelledby="source-title"><h2 id="source-title">来源 / 报道</h2>{{ source(contest) }}
+<details class="evidence-details"><summary>查看原始报道与来源证据（{{ contest.sources|default([], true)|length }}）</summary><p class="report-title"><span class="helper">原始报道标题</span><br>{{ contest.raw_title|default('未记录原始报道标题', true) }}</p>
+{% for item in contest.sources|default([], true) %}
+<article class="evidence-item"><h3>{{ item.title|default('来源片段', true) }}</h3>
+{% set url = (item.url|default('', true)|string)|trim %}
+{% if (url|lower).startswith('https://') or (url|lower).startswith('http://') %}<a class="source-url" href="{{ url }}" target="_blank" rel="noopener noreferrer">{{ url }}</a>{% else %}<p class="helper">来源 URL 缺失或不安全，待核验</p>{% endif %}
+<p class="evidence-excerpt">{{ item.excerpt|default('暂无原文片段，请打开来源核验。', true) }}</p></article>
+{% else %}<p class="helper">尚无额外来源片段，不补造官方链接。</p>{% endfor %}
+</details></section></div>
+<aside class="fact-panel" aria-labelledby="facts-title"><p class="eyebrow">AT A GLANCE</p><h2 id="facts-title">参赛前，先看这些</h2><dl class="detail-facts"><div><dt>截止时间</dt><dd>{{ contest.deadline|default('待核验', true) }}</dd></div><div><dt>主办方</dt><dd>{{ contest.organizer|default(contest.host|default('待核验', true), true) }}</dd></div><div><dt>赛事状态</dt><dd>{{ contest.status|default('未知', true) }}</dd></div><div><dt>参与形式</dt><dd>{{ contest.format|default('未知', true) }}</dd></div><div><dt>线下地区</dt><dd>{{ contest.location_scope|default('未知', true) if contest.format in ['线下','混合'] else '不适用（纯线上或形式未知）' }}</dd></div><div><dt>报名入口</dt><dd>{% set signup = (contest.signup_url|default('', true)|string)|trim %}{% if (signup|lower).startswith('https://') or (signup|lower).startswith('http://') %}<a class="source-url" href="{{ signup }}" target="_blank" rel="noopener noreferrer">{{ signup }}</a>{% else %}暂无可核验的报名链接{% endif %}</dd></div></dl></aside></div>
+{% set by_openclaw = (contest.luna_model|default('', true)|string).startswith('openclaw/') %}
+<p class="helper">核验方式：{{ contest.verification_label }}</p>{% if contest.human_reviewed %}<p class="helper">人工校对时间：{{ contest.human_reviewed_at }}。校对不等于主办方官方认证。</p>{% endif %}
+{% set state_labels = {'verified': 'AI已核验', 'review': '已整理 · 部分待核验', 'pending': '待核验', 'stale': '待重新核验', 'failed': '核验失败', 'disabled': '未核验'} %}
+{% set field_labels = {'contest_name': '名称', 'summary': '简介', 'organizer': '主办', 'host': '主办', 'timeline': '时间线', 'eligibility': '参赛资格', 'prizes': '奖项', 'prize': '奖金', 'signup_url': '报名链接', 'deadline': '截止时间', 'status': '状态', 'format': '线上/线下'} %}
+<details class="curation-details"><summary>查看核验记录与待确认事项</summary>
+{% if by_openclaw %}<section class="role-panel luna-evidence" aria-labelledby="luna-title"><p class="eyebrow">OPENCLAW / 智能整理记录</p><h2 id="luna-title">检索 + 来源页核对，仍以官方为准。</h2><p class="helper">由 OpenClaw「赛事通」智能体用腾讯云元宝搜索检索并核对官网/来源页后整理；查不到证据的字段标为待核验，不做猜测。</p>
+<dl class="detail-facts"><div><dt>核验状态</dt><dd id="luna-state">{{ state_labels.get(contest.luna_state, contest.luna_state) }}</dd></div><div><dt>整理智能体</dt><dd id="luna-model">{{ contest.luna_model }}</dd></div><div><dt>整理时间（UTC）</dt><dd id="luna-time">{{ contest.luna_verified_at|default('未提供', true) }}</dd></div></dl>
+{% else %}<section class="role-panel luna-evidence" aria-labelledby="luna-title"><p class="eyebrow">LUNA / 片段核验记录</p><h2 id="luna-title">给定片段核验，不是官方验证。</h2><p class="helper">Luna 仅依据当前提供的来源片段整理与补全事实，不表示已访问或确认活动官网。未明确的信息仍需人工核验。</p>
+<dl class="detail-facts"><div><dt>Luna 状态</dt><dd id="luna-state">{{ contest.luna_state|default('未运行 / 未提供', true) }}</dd></div><div><dt>实际模型</dt><dd id="luna-model">{{ contest.luna_model|default(contest.luna_model_id|default('未提供', true), true) }}</dd></div><div><dt>核验时间</dt><dd id="luna-time">{{ contest.luna_verified_at|default(contest.verification_time|default(contest.luna_time|default('未提供', true), true), true) }}</dd></div></dl>
+{% endif %}
+<h3>仍不确定的字段（待核验）</h3><ul id="uncertain-fields">{% for field in contest.uncertain_fields|default([], true) %}<li>{{ field_labels.get(field, field) if by_openclaw else field }}</li>{% else %}<li>未记录不确定字段；这不等于信息已全面核实。</li>{% endfor %}</ul>
+<h3>核验说明</h3><ul id="verification-notes">{% for note in contest.verification_notes|default([], true) %}<li>{{ note }}</li>{% else %}<li>尚无核验说明，请参考来源并自行确认。</li>{% endfor %}</ul></section>
+</details><section class="verification" aria-labelledby="verify-title"><span class="verification-mark" aria-hidden="true">!</span><div><h2 id="verify-title">先核验，再报名。</h2><p>搜索与启发式提取可能不完整、过期或识别有误。「未知」不代表线上或线下，「报名中」也不是官方承诺。</p><ul><li>确认报名、作品提交的截止时间与时区。</li><li>确认参赛资格、参与形式、奖励及主办身份。</li><li>涉及缴费或个人资料时，先核对活动官方渠道。</li></ul></div></section>
+</article>
+{% endblock %}

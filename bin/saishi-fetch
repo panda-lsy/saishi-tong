@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# OpenClaw saishi agent tool: fetch (see saishi_tong/agent_tools.py)
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PY="$ROOT/.venv/bin/python"; [[ -x "$PY" ]] || PY=python3
+cd "$ROOT"
+exec "$PY" -c "import sys; from saishi_tong.agent_tools import fetch_main; sys.exit(fetch_main(sys.argv[1:]))" "$@"

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# 赛事通 CLI wrapper — prefers project venv
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+if [[ -x "$ROOT/.venv/bin/python" ]]; then
+  exec "$ROOT/.venv/bin/python" -m saishi_tong.cli "$@"
+fi
+exec python3 -m saishi_tong.cli "$@"

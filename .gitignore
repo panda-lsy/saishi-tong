@@ -1,0 +1,21 @@
+.env
+.env.*
+!.env.example
+out/
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.DS_Store
+secrets/
+dist/
+*.zip
+*.tar.gz
+*.sqlite
+*.sqlite-*
+# Local search library (generated; do not commit)
+data/*.db
+data/*.db-*
+*.pem
+*.key

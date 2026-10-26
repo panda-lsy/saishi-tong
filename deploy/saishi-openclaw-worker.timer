@@ -1,0 +1,10 @@
+[Unit]
+Description=Poll 赛事通 OpenClaw 整理 queue every 2 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

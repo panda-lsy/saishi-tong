@@ -1,0 +1,24 @@
+{% macro source(c) -%}
+{% set url = (c.source_url|default('', true)|string)|trim %}
+<div class="source-block">
+  {% if (url|lower).startswith('https://') or (url|lower).startswith('http://') %}
+  <a class="source-link" href="{{ url }}" title="{{ url }}" target="_blank" rel="noopener noreferrer"><span>来源 ↗</span><span class="source-url">{{ url|source_domain }}</span><span class="sr-only">（新窗口打开）</span></a>
+  {% else %}<span class="source-missing">来源 URL 未提供或不安全，待核验</span>{% endif %}
+  <span class="search-time">检索时间：{{ c.search_time|default('未知', true) }}</span>
+</div>
+{%- endmacro %}
+{% macro badges(c) -%}
+<div class="badges"><span class="badge status{% if c.status|default('') in ['报名中', '进行中', '即将截止'] %} badge-accent{% endif %}">状态 · {{ c.status|default('未知', true) }}</span><span class="badge">形式 · {{ c.format|default('未知', true) }}</span>{% if c.format in ['线下','混合'] %}<span class="badge">线下地区 · {{ c.location_scope|default('未知', true) }}</span>{% endif %}{% if c.verification_label|default('') %}<span class="badge">{{ c.verification_label }}</span>{% endif %}</div>
+{%- endmacro %}
+{% macro card(c, index=none) -%}
+<article class="contest-card">
+  {% if index is not none %}<span class="card-index" aria-hidden="true">{{ '%02d'|format(index) }}</span>{% endif %}
+  <div class="card-content">
+    {{ badges(c) }}
+    <h3>{% if c.id|default(none) is not none and c.id|string %}<a href="/contests/{{ c.id|urlencode }}">{{ c.contest_name|default('待核验赛事', true) }} <span class="title-arrow" aria-hidden="true">↗</span></a>{% else %}{{ c.contest_name|default('待核验赛事', true) }}{% endif %}</h3>
+    <p class="snippet">{{ c.snippet|default('暂无摘要，请查看原始来源了解活动规则。', true) }}</p>
+    <dl class="card-facts"><div><dt>截止</dt><dd>{{ c.deadline|default('待核验', true) }}</dd></div><div><dt>奖励</dt><dd>{{ c.prize|default('待核验', true) }}</dd></div><div><dt>主办</dt><dd>{{ c.host|default('待核验', true) }}</dd></div></dl>
+    {{ source(c) }}
+  </div>
+</article>
+{%- endmacro %}
