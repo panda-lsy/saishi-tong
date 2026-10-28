@@ -14,7 +14,7 @@ class RoundTwoTests(unittest.TestCase):
     def seed_matrix(self):
         for si, status in enumerate(store.CATALOG_STATUSES):
             for fi, mode in enumerate(store.CATALOG_FORMATS):
-                self.card(f'{si}-{fi}', status=status, format=mode, deadline='')
+                self.card(f'{si}-{fi}', status=status, format=mode, deadline='2025-10-20' if status == '已结束' else '2026-10-30' if status == '即将截止' else '2099-11-22')
         self.card('private-pending', status='报名中', luna_state='pending')
         self.card('private-draft', status='即将截止', publication_state='draft')
 
@@ -26,11 +26,11 @@ class RoundTwoTests(unittest.TestCase):
 
     def test_multi_selection_matrix_and_private_visibility(self):
         self.seed_matrix()
-        cases = [([], [], 16), (['报名中', '即将截止'], [], 8),
-                 ([], ['线上'], 8), ([], ['线下'], 8),
-                 ([], ['线上', '线下'], 12), ([], ['混合'], 4),
-                 (['报名中', '已结束'], ['线下'], 4),
-                 (['未知'], ['未知'], 1)]
+        cases = [([], [], 8), (['报名中', '即将截止'], [], 8),
+                 ([], ['线上'], 4), ([], ['线下'], 4),
+                 ([], ['线上', '线下'], 6), ([], ['混合'], 2),
+                 (['报名中', '已结束'], ['线下'], 2),
+                 (['未知'], ['未知'], 0)]
         with patch.object(service, 'run_search', side_effect=AssertionError('local only')):
             for states, modes, count in cases:
                 data = self.api(states, modes)
@@ -65,7 +65,7 @@ class RoundTwoTests(unittest.TestCase):
                 code, _, _ = self.browser.request('/api/contests', method='POST', data={field: value})
                 self.assertEqual(code, 422, (field, value))
 
-    def test_home_excludes_ended_unknown_but_directory_keeps_them(self):
+    def test_home_and_directory_only_show_current_deadline_events(self):
         self.seed_matrix()
         code, _, body = self.browser.request('/')
         self.assertEqual(code, 200)
@@ -73,7 +73,7 @@ class RoundTwoTests(unittest.TestCase):
         self.assertEqual(len(links), 6)
         self.assertTrue(all(link.split('/')[-1].startswith(('0-', '1-')) for link in links))
         self.assertIn('8', body.decode())
-        self.assertEqual(self.api()['total'], 16)
+        self.assertEqual(self.api()['total'], 8)
 
     def test_remove_one_chip_preserves_repeated_values_and_query(self):
         fields = [('q', 'AI&<>'), ('status', '报名中'), ('status', '即将截止'), ('format', '线上'), ('format', '线下')]

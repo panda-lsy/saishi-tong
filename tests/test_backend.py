@@ -83,8 +83,8 @@ class PipelineTests(unittest.TestCase):
 
     def response(self, count=20):
         return [{"Query": "test", "Pages": [
-            {"title": f"赛事{i}", "url": f"https://example.test/articles/{i}",
-             "passage": "线上征文 截止2026-11-22", "score": i}
+            {"title": f"开发者黑客松{i}", "url": f"https://example.test/articles/{i}",
+             "passage": "线上征文正在报名 报名截止2099-11-22", "score": i}
             for i in range(count)]}]
 
     def test_persist_all_stable_ids_and_sql(self):
@@ -104,10 +104,24 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(all(isinstance(c, dict) and c["id"] and c["format"] and c["status"]
                             for c in store.list_contests(include_drafts=True)))
 
+    def test_scope_uncertain_search_stays_private(self):
+        pages = [{"Query": "test", "Pages": [
+            {"title": "2099 AI视频创作大赛", "url": "https://example.test/video",
+             "passage": "正在报名，报名截止2099-11-22，提交AI生成短视频。"},
+            {"title": "2099 开发者黑客松", "url": "https://example.test/code",
+             "passage": "正在报名，报名截止2099-11-22，提交代码。"}]}]
+        with patch.object(service, "search_many", return_value=pages):
+            result = service.run_search("test", luna_enabled=False)
+        self.assertEqual([c['source_url'] for c in result['cards']], ['https://example.test/code'])
+        private = store.list_contests(include_drafts=True)
+        video = next(c for c in private if c['source_url'].endswith('/video'))
+        self.assertEqual(video['publication_state'], 'draft')
+        self.assertIn('技术参赛任务尚不明确', ' '.join(video['verification_notes']))
+
     def test_pack_enriches_when_storage_is_mocked(self):
         # Pack owns its labels even if a replacement storage implementation does not mutate cards.
-        card = ContestCard(name="线上竞赛", deadline="2026-10-25", source_url="https://example.test/pack",
-                           status="未知", format="未知")
+        card = ContestCard(name="线上开发者黑客松", snippet="正在报名", deadline="2026-10-28", source_url="https://example.test/pack",
+                           status="报名中", format="未知")
         with patch.object(service, "search_many", return_value=[{"Pages": []}]), patch.object(
                 service, "pages_to_cards", return_value=[card]), patch.object(
                 service, "upsert_contests"), patch.object(service, "closing_soon", return_value=[card]), patch(
@@ -147,7 +161,8 @@ class PipelineTests(unittest.TestCase):
                 "title": "NaN", "url": "https://example.test/nan", "score": "NaN"}]}]):
             result = service.run_search("test")
             self.assertTrue(result["ok"])
-            self.assertEqual(result["top"][0]["score"], 0)
+            self.assertEqual(result["top"], [])
+            self.assertEqual(result["result_count"], 0)
             json.dumps(result, allow_nan=False)
 
     def test_asgi_visitor_and_search_dispatch(self):

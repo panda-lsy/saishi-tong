@@ -89,7 +89,7 @@ class LocalWebTests(unittest.TestCase):
                     self.assertEqual(headers[b"cache-control"], b"no-store")
 
     def test_without_keys_json_partial_and_duplicate_keys_still_local(self):
-        self.assertEqual(json.loads(self.request("/api/contests")[1])["total"], 2)
+        self.assertEqual(json.loads(self.request("/api/contests")[1])["total"], 1)
         for fields in ({"TENCENTCLOUD_SECRET_ID": "partial"},
                        {"TENCENTCLOUD_SECRET_ID": ["one", "two"], "TENCENTCLOUD_SECRET_KEY": "key"}):
             self.assertEqual(self.request("/api/search", method="POST", fields=fields)[0], 200)

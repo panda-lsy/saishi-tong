@@ -22,7 +22,7 @@ def assess(page):
     if re.search(r'(?:赛事|比赛|黑客松|征文)(?:信息)?(?:汇总|大全|合集|导航|列表)|(?:本周|本月|近期).*(?:赛事|比赛).*盘点', title):
         return {'kind': '来源列表', 'retain': False, 'reason': '包含多场活动的列表页，需从具体活动链接收录。'}
     if re.search(r'(?<!未)(?<!尚未)落幕|(?<!未)收官|获奖名单|获奖公示|拿下.*奖|斩获.*奖|荣获|颁奖', title):
-        return {'kind': '赛后报道', 'retain': True, 'reason': '赛后报道，可作历史线索；不代表正在报名。'}
+        return {'kind': '赛后报道', 'retain': False, 'reason': '赛后报道不作为新赛事收录。'}
     if re.search(r'报名|征稿|征集|投稿|参赛|竞赛规则|比赛规则|征文启事|邀请赛|黑客松|hackathon', text, re.I):
         return {'kind': '赛事线索', 'retain': True, 'reason': '发现活动或参赛线索，仍需核对具体赛事及规则。'}
     return {'kind': '待判断', 'retain': True, 'reason': '摘录不足以判断，保留来源待核，不自动补齐事实。'}

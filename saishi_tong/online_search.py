@@ -8,17 +8,23 @@ import re
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 
 from . import store, source_intake
 from .parse import dedupe, pages_to_cards, _now_iso
 from .search_quality import assess
+from .freshness import assess_event
+from .contest_scope import classify_scope
 
 ENDPOINT = 'https://wsa.tencentcloudapi.com/'
 CONTENT_TYPE = 'application/json; charset=utf-8'
 
 
 class OnlineError(ValueError):
-    pass
+    def __init__(self, code, request_id=''):
+        super().__init__(code)
+        self.request_id = request_id if isinstance(request_id,str) and re.fullmatch(
+            r'[a-fA-F0-9]{8}-(?:[a-fA-F0-9]{4}-){3}[a-fA-F0-9]{12}',request_id) else ''
 
 
 def validate_envelope(envelope, now=None):
@@ -36,11 +42,13 @@ def validate_envelope(envelope, now=None):
     try:
         body=json.loads(payload)
     except (ValueError,TypeError):raise OnlineError('invalid_request') from None
-    if (not isinstance(body,dict) or not {'Query','Cnt','Mode','Freshness'} <= set(body)
+    if (not isinstance(body,dict) or not {'Query','Freshness'} <= set(body)
             or set(body)-{'Query','Cnt','Mode','Freshness','Site'}
             or not isinstance(body['Query'],str) or not 1<=len(body['Query'].strip())<=300
-            or body['Cnt']!=10 or isinstance(body['Cnt'],bool)
-            or body['Mode']!=0 or isinstance(body['Mode'],bool) or not isinstance(body['Freshness'],str) or body['Freshness'] not in {'d30','m3','y1'}
+            or (('Cnt' in body) != ('Mode' in body))
+            or ('Cnt' in body and (body['Cnt']!=10 or isinstance(body['Cnt'],bool)
+                                   or body['Mode']!=0 or isinstance(body['Mode'],bool)))
+            or not isinstance(body['Freshness'],str) or body['Freshness'] not in {'d30','m3','y1'}
             or ('Site' in body and (not isinstance(body['Site'],str) or body['Site'] not in {'csdn.net','modelscope.cn'}))
             or match[1] in body['Query']):
         raise OnlineError('invalid_query')
@@ -66,9 +74,15 @@ def upstream(payload,stamp,auth):
     if not isinstance(data,dict):raise OnlineError('invalid_response')
     if data.get('Error'):
         code=data['Error'].get('Code','') if isinstance(data['Error'],dict) else ''
-        raise OnlineError('search_auth_failed' if code.startswith(('AuthFailure','UnauthorizedOperation'))
-                          else 'search_quota' if code.startswith(('LimitExceeded','RequestLimitExceeded','ResourceUnavailable'))
-                          else 'search_unavailable')
+        if not isinstance(code,str):code=''
+        category=('search_auth_failed' if code.startswith(('AuthFailure','UnauthorizedOperation'))
+                  else 'search_not_open' if code.startswith('ResourceNotFound')
+                  else 'search_resource_unavailable' if code.startswith('ResourceUnavailable')
+                  else 'search_rate_limited' if code.startswith('RequestLimitExceeded')
+                  else 'search_quota' if code.startswith('LimitExceeded')
+                  else 'search_parameters' if code.startswith('InvalidParameter')
+                  else 'search_unavailable')
+        raise OnlineError(category,data.get('RequestId'))
     # SearchPro also returns Pages=null for a successful search with no pages.
     if 'Pages' in data and data['Pages'] is None:data['Pages']=[]
     if not isinstance(data.get('Pages'),list):raise OnlineError('invalid_response')
@@ -78,6 +92,7 @@ def upstream(payload,stamp,auth):
 def search_results(envelope):
     payload,stamp,auth,secret_id=validate_envelope(envelope)
     data=upstream(payload,stamp,auth)
+    requested_site=json.loads(payload).get('Site','')
     pages=[]; excluded=[]; classifications={}; invalid=0
     search_time=_now_iso()
     for raw in data['Pages'][:10]:
@@ -89,8 +104,14 @@ def search_results(envelope):
         entry={key:(value.replace(auth,'[凭据已隐藏]').replace(secret_id,'[凭据已隐藏]')[:limit]
                     if isinstance(value:=entry.get(key,''),str) else '')
                for key,limit in [('title',300),('url',2048),('passage',6000),('content',6000),('site',200),('date',100)]}
-        try:source_intake.source_url(entry['url'])
+        try:safe_url=source_intake.source_url(entry['url'])
         except ValueError:invalid+=1;continue
+        host=(urlsplit(safe_url).hostname or '').lower().rstrip('.')
+        if requested_site and host!=requested_site and not host.endswith('.'+requested_site):
+            excluded.append({'raw_title':entry['title'],'source_url':entry['url'],'search_time':search_time,
+                             'kind':'来源站点不符','retain':False,
+                             'reason':'结果不属于所选来源域名，已排除。'})
+            continue
         try:score=float(score) if isinstance(score,(int,float)) and not isinstance(score,bool) else 0
         except (ValueError,OverflowError):score=0
         entry['score']=score if math.isfinite(score) and 0<=score<=1 else 0
@@ -103,6 +124,7 @@ def search_results(envelope):
                              'search_time':search_time,**quality})
     cards=dedupe(pages_to_cards([{'Query':json.loads(payload)['Query'],'Pages':pages}],search_time=search_time))
     cards.sort(key=lambda c:c.score,reverse=True)
+    current, pending = [], []
     for card in cards:
         card.id=store.stable_id(card)
         card.publication_state='draft';card.record_origin='admin_online_search'
@@ -111,11 +133,24 @@ def search_results(envelope):
         card.verification_notes.append('在线线索分类：'+quality['kind']+'。'+quality['reason'])
         if quality['kind']=='赛后报道':card.status='已结束'
         card.uncertain_fields=[key for key in ('deadline','host','signup_url') if not getattr(card,key)]
+        freshness = assess_event(card)
+        if freshness['state'] == 'expired':
+            excluded.append({'raw_title':card.raw_title,'source_url':card.source_url,'search_time':search_time,
+                             'kind':'已过期赛事','retain':False,'reason':freshness['reason']})
+        elif freshness['state'] == 'pending' or classify_scope(card) != 'in_scope':
+            card.verification_notes.append(freshness['reason'] if freshness['state']=='pending'
+                                           else '技术参赛任务尚不明确，留待管理员核对。')
+            pending.append(card)
+        else:
+            current.append(card)
     request_id=data.get('RequestId','')
     request_id=request_id if isinstance(request_id,str) and re.fullmatch(r'[a-fA-F0-9-]{16,64}',request_id) else ''
-    return {'cards':cards,'excluded':excluded,'classifications':classifications,
+    provider_version=data.get('Version')
+    version=provider_version if isinstance(provider_version,str) and provider_version in {'lite','standard','flagship'} else ''
+    return {'cards':current,'pending_cards':pending,'excluded':excluded,'classifications':classifications,
+            'service_version':version,
             'search_time':search_time,'query':json.loads(payload)['Query'],'request_id':request_id,
-            'counts':{'returned':len(data['Pages'][:10]),'retained':len(cards),
+            'counts':{'returned':len(data['Pages'][:10]),'retained':len(current),'pending':len(pending),
                       'excluded':len(excluded),'invalid':invalid,'duplicates':len(pages)-len(cards)}}
 
 
@@ -132,6 +167,8 @@ def import_admin_results(cards,path=None):
         existing={store._source_identity(r[0]) for r in conn.execute('SELECT source_url FROM contests')}
         ids={r[0] for r in conn.execute('SELECT id FROM contests')}
         for card in cards:
+            if assess_event(card)['state'] == 'expired':
+                skipped+=1;continue
             if store._source_identity(card.source_url) in existing or card.id in ids:
                 skipped+=1;continue
             store._write(conn,card)

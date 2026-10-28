@@ -119,6 +119,27 @@ def extract_json(text):
     return None
 
 
+def decode_agent_reply(out):
+    """Accept gateway-wrapped and embedded CLI replies, keeping actual metadata."""
+    if not isinstance(out, dict):
+        return None, "", "agent_output_invalid"
+    result = out.get("result")
+    if not isinstance(result, dict):
+        result = out
+    meta = result.get("meta")
+    meta = meta if isinstance(meta, dict) else {}
+    agent_meta = meta.get("agentMeta")
+    agent_meta = agent_meta if isinstance(agent_meta, dict) else {}
+    model = "/".join(x for x in (agent_meta.get("provider"), agent_meta.get("model")) if isinstance(x, str) and x)
+    payloads = result.get("payloads")
+    payloads = payloads if isinstance(payloads, list) else []
+    text = "\n".join(p["text"] for p in payloads if isinstance(p, dict) and isinstance(p.get("text"), str))
+    data = extract_json(text)
+    status = out.get("status")
+    status = status if isinstance(status, str) and status in {"ok", "error", "done", "failed"} else "unknown"
+    return data, model, ("" if data else "no_json_in_reply(status=%s)" % status)
+
+
 def run_agent(item, today, job_id, retry=False):
     msg = build_message(item, today, retry)
     with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as fh:
@@ -144,11 +165,7 @@ def run_agent(item, today, job_id, retry=False):
         out = json.loads(proc.stdout)
     except ValueError:
         return None, "", "agent_output_not_json(exit=%s)" % proc.returncode
-    meta = ((out.get("result") or {}).get("meta") or {}).get("agentMeta") or {}
-    model = "/".join(x for x in (meta.get("provider"), meta.get("model")) if x)
-    text = "\n".join(p.get("text") or "" for p in (out.get("result") or {}).get("payloads") or [])
-    data = extract_json(text)
-    return data, model, ("" if data else "no_json_in_reply(status=%s)" % out.get("status"))
+    return decode_agent_reply(out)
 
 
 def process(remote, job):

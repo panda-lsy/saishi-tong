@@ -17,8 +17,9 @@ export function directedQuery(raw, type = '') {
 
 export async function signRequest(query, id, key, timestamp = Math.floor(Date.now() / 1000), options = {}) {
   const freshness = options.freshness || 'm3';
-  if (!['d30', 'm3', 'y1'].includes(freshness) || (options.site && !['csdn.net', 'modelscope.cn'].includes(options.site))) throw new Error('invalid_search_options');
-  const body = { Query: query, Cnt: 10, Mode: 0, Freshness: freshness };
+  const edition = options.edition || 'standard';
+  if (!['d30', 'm3', 'y1'].includes(freshness) || !['standard', 'lite'].includes(edition) || (options.site && !['csdn.net', 'modelscope.cn'].includes(options.site))) throw new Error('invalid_search_options');
+  const body = edition === 'lite' ? { Query: query, Freshness: freshness } : { Query: query, Cnt: 10, Mode: 0, Freshness: freshness };
   if (options.site) body.Site = options.site;
   const payload = JSON.stringify(body);
   const day = new Date(timestamp * 1000).toISOString().slice(0, 10);

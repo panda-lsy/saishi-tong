@@ -19,6 +19,14 @@ class ContestScopeTests(unittest.TestCase):
         for title in ['元宝搜索开发者征文大赛','AI文化造物黑客松','全国青少年信息学竞赛','网络安全CTF挑战赛','计算机视觉算法挑战赛','软件开发技术征文']:
             self.assertEqual(classify_scope({'title':title}),'in_scope')
 
+    def test_ai_theme_alone_and_creative_hackathon_do_not_prove_technical_task(self):
+        for title in ['2026 AI短视频创作大赛', '2026 AI 视频创作大赛',
+                      '2026 大模型创意比赛', '2026 AIGC影像黑客松']:
+            with self.subTest(title=title):
+                self.assertEqual(classify_scope({'title':title}), 'uncertain')
+        self.assertEqual(classify_scope({'title':'2026 AI短视频创作大赛',
+                                        'content':'要求调用SDK开发应用并提交源代码'}), 'in_scope')
+
     def test_old_out_of_scope_row_cannot_be_reapproved_or_published(self):
         with tempfile.TemporaryDirectory() as t:
             path=Path(t)/'c.db'

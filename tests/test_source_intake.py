@@ -94,6 +94,24 @@ class SourceIntakeTests(unittest.TestCase):
         self.assertEqual(sources.list_jobs()[0]['results'][0]['search_time'], card['search_time'])
         self.assertEqual(sources.commit(job['id'], claim['claim_key'], payload, 'openai/gpt-6-luna')['results'], output['results'])
 
+    def test_missing_deadline_stays_private_and_ended_source_is_skipped(self):
+        job, claim = self.create_claim(limit=2)
+        unknown = self.result('https://modelscope.cn/events/unknown')
+        unknown['fields'].update(deadline='', timeline='', status='未知')
+        unknown['evidence'].pop('deadline', None)
+        unknown['sources'][0]['excerpt'] = '星河开发者挑战赛为面向开发者的技术赛事；报名时间尚未公布。'
+        ended = self.result('https://modelscope.cn/events/ended')
+        ended['fields'].update(deadline='2026-01-02', status='已结束')
+        ended['sources'][0]['excerpt'] = '星河开发者挑战赛，报名截止2026-01-02。'
+        payload = {'contests': [unknown, ended]}
+        with patch('saishi_tong.classify.current_date', return_value=date(2026, 10, 26)):
+            receipt = sources.commit(job['id'], claim['claim_key'], payload, 'openai/gpt-6-luna')
+        self.assertEqual(len(receipt['results']), 1); self.assertEqual(receipt['skipped'], 1)
+        draft = store.get_contest(receipt['results'][0]['id'], include_drafts=True)
+        self.assertEqual(draft['deadline'], ''); self.assertEqual(draft['publication_state'], 'draft')
+        self.assertIn('不作为新赛事搜索结果', ' '.join(draft['verification_notes']))
+        self.assertEqual(store.list_contests(), [])
+
     def test_real_but_non_computing_contest_is_not_imported(self):
         job,claim=self.create_claim()
         result=self.result()
@@ -215,7 +233,8 @@ class DeadlineAgingTests(unittest.TestCase):
             original = store.get_contest(card.id, path, include_drafts=True)
             before = store.record_fingerprint(original)
             with patch('saishi_tong.classify.current_date', return_value=date(2026, 11, 23)):
-                self.assertEqual(store.get_contest(card.id, path)['status'], '已结束')
+                self.assertIsNone(store.get_contest(card.id, path))
+                self.assertEqual(store.get_contest(card.id, path, include_drafts=True)['status'], '报名中')
                 self.assertEqual(store.search_contests(status=['报名中', '即将截止'], path=path), [])
-                self.assertEqual(store.search_contests(status='已结束', path=path)[0]['id'], card.id)
+                self.assertEqual(store.search_contests(status='已结束', path=path), [])
                 self.assertEqual(store.record_fingerprint(store.get_contest(card.id, path, include_drafts=True)), before)

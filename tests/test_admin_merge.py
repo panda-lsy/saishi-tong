@@ -337,5 +337,21 @@ class AdminMergeTests(unittest.TestCase):
         result = store.merge_contests("a", ["b"], expected_fingerprints=self.fingerprints("a", "b"), path=self.path)
         self.assertEqual(result["contest"]["luna_state"], "verified")
 
+    def test_merge_does_not_revive_legacy_only_prize_or_host(self):
+        a, b = self.save(self.card("a", curated=True, luna_state="verified", luna_input_hash="x" * 64,
+                                  organizer="", host="", prizes="", prize=""),
+                         self.card("b", curated=True, organizer="", host="旧标题误提取主办", prizes="", prize="91万"))
+        merged = store.merge_contests("a", ["b"], expected_fingerprints=self.fingerprints("a", "b"), path=self.path)["contest"]
+        self.assertEqual((merged["organizer"], merged["host"], merged["prizes"], merged["prize"]), ("", "", "", ""))
+        self.assertEqual(merged["luna_state"], "verified")
+        self.assertEqual(json.loads(self.audit()[0]["conflicts"])["filled"], [])
+
+    def test_merge_updates_legacy_mirrors_when_modern_facts_are_filled(self):
+        self.save(self.card("a", organizer="", host="", prizes="", prize=""),
+                  self.card("b", organizer="来源主办", host="过时主办", prizes="一等奖1000元\n二等奖500元", prize="错误金额"))
+        merged = store.merge_contests("a", ["b"], expected_fingerprints=self.fingerprints("a", "b"), path=self.path)["contest"]
+        self.assertEqual(merged["host"], "来源主办")
+        self.assertEqual(merged["prize"], "一等奖1000元")
+
 if __name__ == "__main__":
     unittest.main()

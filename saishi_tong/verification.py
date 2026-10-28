@@ -2,8 +2,13 @@
 import hashlib
 import json
 from dataclasses import asdict, is_dataclass
+from .luna import FACT_FIELDS
 
-VERIFIED_SQL = "(human_reviewed_at != '')"
+# A timestamp alone is insufficient: the confirmation binds the facts and the
+# primary source. The connection registers this function for every query.
+SQL_REVIEW_FIELDS = ('human_reviewed_at', 'human_reviewed_hash', *FACT_FIELDS,
+                     'source_url', 'name', 'raw_title', 'source_excerpt', 'snippet')
+VERIFIED_SQL = "(saishi_review_is_current(" + ",".join('"' + f + '"' for f in SQL_REVIEW_FIELDS) + ") = 1)"
 AI_REVIEWED_SQL = "(luna_state = 'verified' OR ai_reviewed_at != '')"
 REVIEW_GROUP_SQL = "CASE WHEN " + VERIFIED_SQL + " THEN 'verified' WHEN " + AI_REVIEWED_SQL + " THEN 'awaiting' ELSE 'unverified' END"
 
@@ -13,7 +18,6 @@ def values(card):
 
 
 def facts_hash(card, *, include_location=True):
-    from .luna import FACT_FIELDS
     data = values(card)
     facts = {key: data.get(key, '') for key in (*FACT_FIELDS, 'source_url') if include_location or key != 'location_scope'}
     return hashlib.sha256(json.dumps(facts, ensure_ascii=False, sort_keys=True).encode()).hexdigest()

@@ -27,7 +27,7 @@ def envelope(query='中文黑客松',stamp=None):
 
 def response():
     return {'Pages':[json.dumps({'title':'2026 示例黑客松报名','url':'https://example.test/online',
-              'passage':'主办：测试基金会。报名截止2026-11-22。线上举办。'},ensure_ascii=False)]}
+              'passage':'主办：测试基金会。正在报名，报名截止2026-11-22。线上举办。'},ensure_ascii=False)]}
 
 
 class OnlineSearchTests(unittest.TestCase):
@@ -89,6 +89,14 @@ class OnlineSearchTests(unittest.TestCase):
             body=envelope();payload=json.loads(body['payload']);payload.update(changes);body['payload']=json.dumps(payload)
             with self.assertRaises(online.OnlineError):online.validate_envelope(body)
 
+    def test_lite_signature_omits_unsupported_mode_and_count(self):
+        body=envelope();payload=json.loads(body['payload']);payload.pop('Cnt');payload.pop('Mode')
+        body['payload']=json.dumps(payload)
+        self.assertEqual(online.validate_envelope(body)[0],body['payload'])
+        for field,value in [('Cnt',10),('Mode',0)]:
+            partial={**body,'payload':json.dumps({**payload,field:value})}
+            with self.assertRaises(online.OnlineError):online.validate_envelope(partial)
+
     def test_provider_receives_exact_signed_bytes_and_fixed_target(self):
         recorded=[]
         class Reply:
@@ -112,6 +120,75 @@ class OnlineSearchTests(unittest.TestCase):
         self.assertEqual(code,502);self.assertIn('密钥',raw.decode())
         self.assertFalse(self.path.exists())
 
+    def test_official_error_codes_are_distinct_and_raw_messages_are_never_reflected(self):
+        request_id='11111111-2222-3333-4444-555555555555'
+        for error,expected in [('ResourceNotFound','尚未开通'),('ResourceUnavailable','资源当前不可用'),
+                               ('RequestLimitExceeded','请求频率受限'),('InvalidParameter','未接受本次参数')]:
+            class Reply:
+                def __enter__(self):return self
+                def __exit__(self,*args):pass
+                def read(self,n):return json.dumps({'Response':{'Error':{'Code':error,'Message':IDENTITY},'RequestId':request_id}}).encode()
+            class Opener:
+                def open(self,request,timeout):return Reply()
+            with self.subTest(error=error),patch('urllib.request.build_opener',return_value=Opener()):
+                code,_,raw=self.browser.request('/api/online-search','POST',envelope())
+                self.assertEqual(code,502)
+                self.assertIn(expected,raw.decode());self.assertIn(request_id,raw.decode())
+                self.assertNotIn(IDENTITY,raw.decode())
+        self.assertFalse(self.path.exists())
+
+    def test_single_site_filters_authoritative_results_outside_domain_before_import(self):
+        urls=['https://csdn.net/a','https://blog.csdn.net/b',
+              'https://csdn.net.attacker.example/c','https://news.example/d']
+        pages=[{'title':f'2026 星河开发者黑客松{i}','url':url,
+                'passage':'正在报名，报名截止2026-11-20。线上开发技术比赛。'} for i,url in enumerate(urls)]
+        body=envelope();payload=json.loads(body['payload']);payload['Site']='csdn.net';body['payload']=json.dumps(payload)
+        with patch('saishi_tong.classify.current_date',return_value=__import__('datetime').date(2026,10,27)), \
+             patch.object(online,'upstream',return_value={'Pages':pages,'Version':'flagship'}):
+            result=online.search_results(body)
+        self.assertEqual({c.source_url for c in result['cards']},set(urls[:2]))
+        self.assertEqual({x['source_url'] for x in result['excluded']},set(urls[2:]))
+        self.assertTrue(all(x['kind']=='来源站点不符' for x in result['excluded']))
+        self.assertEqual(result['service_version'],'flagship')
+        self.assertEqual(result['counts']['returned'],4)
+        self.assertEqual(result['counts']['excluded'],2)
+
+    def test_admin_single_site_and_uncertain_scope_import_only_private_drafts(self):
+        self.browser.request('/api/admin/login','POST',{'token':TOKEN})
+        _,_,session=self.browser.request('/api/admin/session')
+        csrf={'x-csrf-token':json.loads(session)['csrf_token']}
+        pages=[{'title':'2026 开发者黑客松','url':'https://blog.csdn.net/test/code',
+                'passage':'正在报名，报名截止2026-11-20，提交代码完成软件开发。'},
+               {'title':'2026 AI视频创作大赛','url':'https://csdn.net/test/video',
+                'passage':'正在报名，报名截止2026-11-20，提交AI生成短视频。'},
+               {'title':'2026 开发者黑客松','url':'https://csdn.net.attacker.example/event',
+                'passage':'正在报名，报名截止2026-11-20，提交代码。'}]
+        body=envelope();payload=json.loads(body['payload']);payload['Site']='csdn.net';body['payload']=json.dumps(payload)
+        with patch('saishi_tong.classify.current_date',return_value=__import__('datetime').date(2026,10,27)), \
+             patch.object(online,'upstream',return_value={'Pages':pages}):
+            code,_,raw=self.browser.request('/api/online-search','POST',body,csrf)
+        self.assertEqual(code,200);result=json.loads(raw)
+        self.assertEqual(result['admin_import']['imported'],2)
+        self.assertEqual(result['counts']['pending'],1)
+        self.assertEqual(result['counts']['excluded'],1)
+        self.assertEqual([c['source_url'] for c in result['cards']],['https://blog.csdn.net/test/code'])
+        drafts=store.list_admin_contests(verification='unverified')['contests']
+        self.assertEqual({c['source_url'] for c in drafts}, {pages[0]['url'], pages[1]['url']})
+        self.assertTrue(all(c['publication_state']=='draft' and not c['human_reviewed'] for c in drafts))
+        self.assertEqual(store.search_contests(),[])
+
+    def test_unverified_ai_creative_event_stays_private_without_technical_task(self):
+        pages=[{'title':'2026 AI 视频创作大赛','url':'https://example.test/video',
+                'passage':'正在报名，报名截止2026-11-20，作品为AI生成短视频。'},
+               {'title':'2026 开发者黑客松','url':'https://example.test/code',
+                'passage':'正在报名，报名截止2026-11-20，提交代码完成软件开发。'}]
+        with patch('saishi_tong.classify.current_date',return_value=__import__('datetime').date(2026,10,27)), \
+             patch.object(online,'upstream',return_value={'Pages':pages}):
+            result=online.search_results(envelope())
+        self.assertEqual([c.source_url for c in result['cards']],['https://example.test/code'])
+        self.assertEqual([c.source_url for c in result['pending_cards']],['https://example.test/video'])
+        self.assertIn('技术参赛任务尚不明确',result['pending_cards'][0].verification_notes[-1])
+
     def test_provider_null_pages_means_empty_success_without_guest_database_write(self):
         class Reply:
             def __enter__(self):return self
@@ -127,8 +204,9 @@ class OnlineSearchTests(unittest.TestCase):
     def test_result_redaction_and_unsafe_source_rejection(self):
         data={'Pages':[{'title':IDENTITY,'url':'https://example.test/safe','passage':IDENTITY},
                        {'title':'本机','url':'http://127.0.0.1/'}, {'title':'凭据','url':'https://example.test/?token=sensitive'}]}
-        with patch.object(online,'upstream',return_value=data):cards=online.search(envelope())
-        self.assertEqual(len(cards),1);self.assertNotIn(IDENTITY,repr(cards))
+        with patch.object(online,'upstream',return_value=data):result=online.search_results(envelope())
+        self.assertEqual(len(result['cards']),0);self.assertEqual(len(result['pending_cards']),1)
+        self.assertNotIn(IDENTITY,repr(result))
 
     def test_duplicate_retired_and_existing_records_remain_unchanged(self):
         with patch.object(online,'upstream',return_value=response()):cards=online.search(envelope())
@@ -164,3 +242,45 @@ class OnlineSearchTests(unittest.TestCase):
         self.assertEqual(store.list_admin_contests(verification='unverified')['total'],1)
         self.assertEqual({c['kind'] for c in data['excluded']},{'非赛事','来源列表'})
         self.assertTrue(all(c['source_url'] and c['search_time'] for c in data['excluded']))
+
+    def test_missing_event_deadline_is_admin_only_pending_not_a_new_result(self):
+        page={'title':'2026 星河开发者黑客松','url':'https://example.test/events/star',
+              'passage':'面向开发者的线上技术比赛，主办方为星河实验室。'}
+        with patch.object(online,'upstream',return_value={'Pages':[page]}):
+            code,_,raw=self.browser.request('/api/online-search','POST',envelope())
+        self.assertEqual(code,200);guest=json.loads(raw)
+        self.assertEqual(guest['total'],0);self.assertEqual(guest['counts']['pending'],1)
+        self.assertEqual(guest['cards'],[]);self.assertFalse(self.path.exists())
+        self.browser.request('/api/admin/login','POST',{'token':TOKEN})
+        _,_,session=self.browser.request('/api/admin/session')
+        csrf={'x-csrf-token':json.loads(session)['csrf_token']}
+        with patch.object(online,'upstream',return_value={'Pages':[page]}):
+            code,_,raw=self.browser.request('/api/online-search','POST',envelope(),csrf)
+        admin=json.loads(raw)
+        self.assertEqual(admin['total'],0);self.assertEqual(admin['admin_import']['imported'],1)
+        draft=store.list_admin_contests(verification='unverified')['contests'][0]
+        self.assertEqual(draft['publication_state'],'draft');self.assertIn('时效待核', ' '.join(draft['verification_notes']))
+
+    def test_online_future_opening_stays_private_pending(self):
+        page={'title':'2026 星河开发者黑客松','url':'https://example.test/events/not-open',
+              'passage':'报名开始时间：2026-11-01。报名截止2026-11-20。线上开发技术比赛。'}
+        with patch('saishi_tong.classify.current_date',return_value=__import__('datetime').date(2026,10,27)), \
+             patch.object(online,'upstream',return_value={'Pages':[page]}):
+            code,_,raw=self.browser.request('/api/online-search','POST',envelope())
+        self.assertEqual(code,200)
+        result=json.loads(raw)
+        self.assertEqual(result['cards'],[])
+        self.assertEqual(result['counts']['pending'],1)
+        self.assertFalse(self.path.exists())
+
+    def test_future_deadline_alone_does_not_prove_online_registration_is_open(self):
+        page={'title':'2026 星河开发者黑客松','url':'https://example.test/events/deadline-only',
+              'passage':'报名截止2026-11-20。线上开发技术比赛。'}
+        with patch('saishi_tong.classify.current_date',return_value=__import__('datetime').date(2026,10,27)), \
+             patch.object(online,'upstream',return_value={'Pages':[page]}):
+            code,_,raw=self.browser.request('/api/online-search','POST',envelope())
+        self.assertEqual(code,200)
+        result=json.loads(raw)
+        self.assertEqual(result['cards'],[])
+        self.assertEqual(result['counts']['pending'],1)
+        self.assertFalse(self.path.exists())

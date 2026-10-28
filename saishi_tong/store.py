@@ -15,7 +15,7 @@ from pathlib import Path
 
 from .classify import enrich_card, normalized_url, safe_source_url
 from .parse import ContestCard, _norm_title, _now_iso
-from .verification import VERIFIED_SQL, REVIEW_GROUP_SQL, describe, facts_hash, human_reviewed, is_verified
+from .verification import VERIFIED_SQL, REVIEW_GROUP_SQL, SQL_REVIEW_FIELDS, describe, facts_hash, human_reviewed, is_verified
 
 DEFAULT_DB = Path(__file__).resolve().parent.parent / "data" / "contests.db"
 FIELD_DEFS = {f.name: f for f in fields(ContestCard)}
@@ -54,11 +54,28 @@ def _column_sql(name):
     return '"' + name + '" ' + kind + (" PRIMARY KEY" if name == "id" else " DEFAULT " + literal)
 
 
+def _sql_human_review_is_current(*args):
+    """Match the normalized facts shown to an administrator, without DB writes."""
+    from .classify import heuristic_contest_name
+    data = {name: value if isinstance(value, str) else _default(name)
+            for name, value in zip(SQL_REVIEW_FIELDS, args)}
+    if not data['human_reviewed_at'] or not data['human_reviewed_hash']:
+        return 0
+    for name in ('source_url', 'signup_url'):
+        data[name] = safe_source_url(data[name])
+    if not data['contest_name']:
+        data['contest_name'] = heuristic_contest_name(data['raw_title'] or data['name'],
+                                                      data['source_excerpt'] or data['snippet'])
+    return int(human_reviewed(data))
+
+
 def _connect(path: Path | None = None) -> sqlite3.Connection:
     path = Path(path) if path is not None else database_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path, timeout=10)
     conn.row_factory = sqlite3.Row
+    conn.create_function('saishi_review_is_current', len(SQL_REVIEW_FIELDS),
+                         _sql_human_review_is_current, deterministic=True)
     try:
         conn.execute("CREATE TABLE IF NOT EXISTS contests (" + ", ".join(_column_sql(n) for n in COLUMNS) + ")")
         existing = {r[1] for r in conn.execute("PRAGMA table_info(contests)")}
@@ -212,10 +229,14 @@ def upsert_contests(cards: list[ContestCard], path: Path | None = None) -> list[
 
 def _card_dict(row, *, current=False) -> dict:
     from .classify import display_status
+    from .freshness import assess_event
     data = describe(enrich_card(_decode(row)))
     data['record_fingerprint'] = record_fingerprint(data)
+    data['current_status'] = display_status(data['status'], data['deadline'])
+    freshness = assess_event(data)
+    data['freshness_state'], data['freshness_reason'] = freshness['state'], freshness['reason']
     if current:
-        data['status'] = display_status(data['status'], data['deadline'])
+        data['status'] = data['current_status']
     return data
 
 
@@ -291,7 +312,7 @@ def search_contests(*, q: str = "", status: str | list[str] = "", format: str | 
         sql += " ORDER BY search_time DESC, score DESC, id"
         cards = [_card_dict(row, current=True) for row in conn.execute(sql, params)]
         from .contest_scope import classify_scope
-        cards = [c for c in cards if classify_scope(c) != 'out_of_scope' and (not statuses or c["status"] in statuses)
+        cards = [c for c in cards if c['freshness_state'] == 'current' and classify_scope(c) != 'out_of_scope' and (not statuses or c["status"] in statuses)
                  and (not formats or c["format"] in formats)
                  and (not locations or c['format'] in {'线下','混合'} and c['location_scope'] in locations)]
         return cards if limit is None else cards[:limit]
@@ -321,7 +342,8 @@ def get_contest(contest_id: str, path: Path | None = None, *, include_drafts: bo
         from .contest_scope import classify_scope
         if row is not None and not include_drafts and classify_scope(_decode(row))=='out_of_scope':
             return None
-        return _card_dict(row, current=not include_drafts) if row is not None else None
+        data = _card_dict(row, current=not include_drafts) if row is not None else None
+        return data if include_drafts or data is None or data['freshness_state'] == 'current' else None
     finally:
         conn.close()
 
@@ -531,6 +553,25 @@ def list_admin_contests(*, verification: str = "all", page: int = 1,
 def list_deleted_contests(path=None):
     with closing(_connect(path)) as conn:
         return [_card_dict(r) for r in conn.execute("SELECT * FROM contests WHERE deleted_at != '' ORDER BY deleted_at DESC,id")]
+
+
+def archive_ended(path=None):
+    """Worker maintenance: recoverable, atomic, audited; public GETs never write."""
+    from .freshness import assess_event
+    archived = []
+    with closing(_connect(path)) as conn, conn:
+        conn.execute('BEGIN IMMEDIATE')
+        for row in conn.execute("SELECT * FROM contests WHERE deleted_at='' AND merged_into='' AND publication_state!='retired'").fetchall():
+            card = _decode(row)
+            if assess_event(_card_dict(row))['state'] != 'expired':
+                continue
+            before = record_fingerprint(card)
+            card.deleted_at = _now_iso()
+            _write(conn, card)
+            conn.execute('INSERT INTO contest_deletion_audit (contest_id,action,acted_at,before_fingerprint,after_fingerprint) VALUES (?,?,?,?,?)',
+                         (card.id, 'auto_expire', _now_iso(), before, record_fingerprint(card)))
+            archived.append(card.id)
+    return archived
 
 
 def change_deleted_state(contest_id,expected_fingerprint,*,restore=False,path=None):
@@ -857,6 +898,11 @@ def merge_contests(target_id: str, duplicate_ids: list[str], *, verified_card=No
             for other in originals[1:]:
                 has_source = bool(_source_keys(other))
                 for name in FACT_FIELDS:
+                    # Legacy mirrors can contain old heuristic guesses even
+                    # after AI deliberately leaves their modern facts empty.
+                    # Merge organizer/prizes, never promote host/prize alone.
+                    if name in {"host", "prize"}:
+                        continue
                     proposed = getattr(other, name)
                     current = getattr(canonical, name)
                     if not proposed or proposed == "未知":
@@ -871,6 +917,10 @@ def merge_contests(target_id: str, duplicate_ids: list[str], *, verified_card=No
                         conflicts.append({"field": name, "source_id": other.id,
                                           "kept": current, "alternative": proposed})
                         uncertain.add(name)
+            if canonical.organizer != fact_before["organizer"]:
+                canonical.host = canonical.organizer
+            if canonical.prizes != fact_before["prizes"]:
+                canonical.prize = canonical.prizes.splitlines()[0][:300] if canonical.prizes else ""
             canonical.sources = _merge_sources([canonical] + originals[1:])
             canonical.publication_state = baseline.publication_state if sources_only else "published"
             canonical.merged_into = ""

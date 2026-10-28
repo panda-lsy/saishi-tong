@@ -1,6 +1,6 @@
 """Small CLIs for the OpenClaw saishi agent (run on Jarvis, never by the website).
 
-  bin/saishi-searchpro "查询词" [--cnt 10] [--freshness y1]
+  bin/saishi-searchpro "查询词" [--cnt 10] [--freshness y1] [--lite]
       腾讯云元宝搜索 SearchPro；密钥只从 ~/.config/saishi-tong/tencent.env 读取，从不输出。
   bin/saishi-fetch URL [--max 8000]
       抓取官网/来源页正文（纯文本），用于逐字核对字段。
@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date, datetime, timedelta, timezone
 import html
 import ipaddress
 import json
@@ -46,28 +47,62 @@ def _pages(raw):
         get = lambda *keys: next((str(page[k]) for k in keys if page.get(k)), "")
         out.append({"title": get("title", "Title")[:300], "url": get("url", "URL", "link")[:800],
                     "site": get("site", "Site")[:120], "date": get("date", "Date", "time")[:40],
-                    "snippet": get("passage", "content", "snippet", "Content")[:1200]})
+                    "snippet": get("passage", "content", "snippet", "Content")[:1200],
+                    "passage": get("passage", "Passage")[:1200],
+                    "content": get("content", "Content")[:1200]})
     return out
+
+
+def _freshness(value, *, today=None):
+    """Validate the documented SearchPro forms before credentials are loaded."""
+    if value == "":
+        return value
+    relative = re.fullmatch(r"([dmy])([0-9]{1,2})?", value)
+    if relative:
+        amount = int(relative.group(2) or '1')
+        if 1 <= amount <= {'d': 30, 'm': 12, 'y': 5}[relative.group(1)]:
+            return value
+    else:
+        parts = value.split(',')
+        if len(parts) in (1, 2) and all(re.fullmatch(r'\d{4}-\d{2}-\d{2}', part) for part in parts):
+            try:
+                dates = [date.fromisoformat(part) for part in parts]
+            except ValueError:
+                dates = []
+            now = today or datetime.now(timezone(timedelta(hours=8))).date()
+            if dates and all(date(1970, 1, 1) <= item <= now for item in dates):
+                # The official text and example disagree on range ordering;
+                # preserve the supplied order and let SearchPro decide it.
+                return value
+    raise argparse.ArgumentTypeError('请使用 d1–d30、m1–m12、y1–y5 或有效的 YYYY-MM-DD 日期／日期区间。')
 
 
 def searchpro_main(argv=None):
     ap = argparse.ArgumentParser(prog="saishi-searchpro", description="腾讯云元宝搜索 SearchPro")
     ap.add_argument("query", nargs="+")
-    ap.add_argument("--cnt", type=int, default=10, choices=[10, 20, 30, 40, 50])
-    ap.add_argument("--freshness", default="", help="可选：d1/w1/m1/m3/y1；默认不限")
+    ap.add_argument("--cnt", type=int, default=None, choices=[10, 20, 30, 40, 50])
+    ap.add_argument("--freshness", type=_freshness, default="", help="可选：d7/m3/y1、YYYY-MM-DD 或日期区间；默认不限")
+    ap.add_argument("--lite", action="store_true", help="极速版不传 Mode 和 Cnt，保持每次一次调用")
     args = ap.parse_args(argv)
+    if args.lite and args.cnt is not None:
+        ap.error('极速版不支持 --cnt，请移除该参数。')
     query = " ".join(args.query).strip()
     _load_cam()
     from .client import search_pro
     try:
-        raw = search_pro(query, cnt=args.cnt, mode=0, freshness=args.freshness or None)
+        raw = search_pro(query, cnt=None if args.lite else (args.cnt or 10),
+                         mode=None if args.lite else 0, freshness=args.freshness or None)
     except Exception as exc:  # never print SDK text (may echo credential ids)
         print(json.dumps({"ok": False, "engine": "tencent_searchpro", "query": query,
                           "error": type(exc).__name__}, ensure_ascii=False))
         return 1
     pages = _pages(raw)
-    print(json.dumps({"ok": True, "engine": "tencent_searchpro", "query": query, "count": len(pages),
-                      "results": pages}, ensure_ascii=False, indent=1))
+    result = {"ok": True, "engine": "tencent_searchpro", "query": query, "count": len(pages),
+              "results": pages}
+    version = raw.get('Version')
+    if isinstance(version, str) and version in {'lite', 'standard', 'flagship'}:
+        result['version'] = version
+    print(json.dumps(result, ensure_ascii=False, indent=1))
     return 0
 
 
@@ -81,7 +116,7 @@ def _text(raw: str) -> tuple[str, str]:
     body = re.sub(r"[ \t\r\f\v]+", " ", body)
     body = re.sub(r"\n\s*\n+", "\n", body).strip()
     keep = [(h, re.sub(r"<[^>]+>|\s+", " ", t).strip()) for h, t in links]
-    keep = [f"[{t[:60]}]({h})" for h, t in keep if re.search(r"报名|注册|sign|regist|apply|规则|赛程|rules|黑客松|大赛|挑战赛|征文|/events/\d+|activity-site/|/topics/", t + h, re.I)]
+    keep = [f"[{t[:60]}]({h})" for h, t in keep if re.search(r"报名|注册|投稿|交稿|提交|参赛|sign|regist|apply|规则|赛程|rules|黑客松|大赛|挑战赛|征文|/events/\d+|activity-site/|/topics/|/writing(?:\?|/)", t + h, re.I)]
     if keep:
         body += "\n\n赛事/报名/规则相关链接：\n" + "\n".join(dict.fromkeys(keep[:40]))
     return (html.unescape(title.group(1)).strip() if title else ""), body

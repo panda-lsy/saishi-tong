@@ -93,7 +93,7 @@ class LocalCatalogTests(unittest.TestCase):
 
     def add(self, i, **extra):
         values = dict(name=f"原始新闻{i}", contest_name=f"星河赛事{i}", raw_title=f"完整原题{i}",
-                      source_url=f"https://example.test/{i}", search_time="2026-10-21T00:00:00Z",
+                      source_url=f"https://example.test/{i}", search_time="2026-10-21T00:00:00Z", deadline="2099-11-22",
                       summary="共享摘要", curated=True, luna_state="verified", status="报名中", format="线上")
         values.update(extra)
         c = ContestCard(**values)
@@ -106,18 +106,18 @@ class LocalCatalogTests(unittest.TestCase):
         self.add(131, publication_state="draft", contest_name="隐藏草稿")
         self.add(132, organizer="独有组织", status="已结束", format="线下")
         self.add(133, snippet="独有片段", format="混合")
-        self.assertEqual(len(store.search_contests()), 132)
-        self.assertEqual(len(store.search_contests(q="共享摘要")), 132)
+        self.assertEqual(len(store.search_contests()), 131)
+        self.assertEqual(len(store.search_contests(q="共享摘要")), 131)
         self.assertEqual(len(store.search_contests(q="完整原题129")), 1)
         self.assertEqual(len(store.search_contests(q="星河赛事129")), 1)
         self.assertEqual(len(store.search_contests(q="原始新闻129")), 1)
-        self.assertEqual(len(store.search_contests(q="独有组织", status="已结束", format="线下")), 1)
+        self.assertEqual(len(store.search_contests(q="独有组织", status="已结束", format="线下")), 0)
         self.assertEqual(len(store.search_contests(q="独有片段", format="混合")), 1)
         self.assertEqual(store.search_contests(q="隐藏草稿"), [])
         self.assertEqual(len(store.search_contests(limit=2)), 2)
         self.assertEqual(store.search_contests(limit=0), [])
-        self.assertEqual(len(store.search_contests(status="已结束", limit=1)), 1)
-        self.assertEqual(store.count_contests(), 132)
+        self.assertEqual(len(store.search_contests(status="已结束", limit=1)), 0)
+        self.assertEqual(store.count_contests(), 131)
         for kw in ({"status": "all"}, {"format": "线上,线下"}, {"limit": -1}):
             with self.assertRaises(ValueError):
                 store.search_contests(**kw)

@@ -9,6 +9,7 @@ if (button) {
   const type = document.getElementById('online-type');
   const site = document.getElementById('online-site');
   const freshness = document.getElementById('online-freshness');
+  const edition = document.getElementById('online-edition');
   const queryInput = document.getElementById('q');
   const preview = document.getElementById('online-query-preview');
   const query = () => directedQuery(queryInput.value, type?.value || '');
@@ -38,7 +39,7 @@ if (button) {
       const pair = keys();
       if (!pair.id || !pair.key) throw new Error('missing_keys');
       if (actualQuery.includes(pair.id) || actualQuery.includes(pair.key)) throw new Error('credential_in_query');
-      const envelope = await signRequest(actualQuery, pair.id, pair.key, undefined, { site: site?.value || '', freshness: freshness?.value || 'm3' });
+      const envelope = await signRequest(actualQuery, pair.id, pair.key, undefined, { site: site?.value || '', freshness: freshness?.value || 'm3', edition: edition?.value || 'standard' });
       const sessionResponse = await fetch('/api/admin/session', { credentials: 'same-origin', cache: 'no-store', signal: controller.signal });
       const session = await sessionResponse.json();
       const response = await fetch('/api/online-search', {
@@ -52,6 +53,8 @@ if (button) {
         feedback.textContent = typeof data.detail === 'string' ? data.detail : '在线查找未完成，请刷新后重试。'; return;
       }
       items.append(node('p', '本次检索词：' + (data.query || actualQuery), 'helper'));
+      const versions = { lite: '极速版', standard: '标准版', flagship: '旗舰版' };
+      if (Object.hasOwn(versions, data.service_version)) items.append(node('p', '本次搜索版本：' + versions[data.service_version], 'helper'));
       for (const card of data.cards || []) {
         const article = node('article', undefined, 'online-result');
         const named = card.contest_name && card.contest_name !== '待核验赛事';
@@ -75,7 +78,7 @@ if (button) {
         feedback.textContent = '保留 ' + data.total + ' 条线索，新增 ' + data.admin_import.imported + ' 条未核验草稿，跳过 ' + data.admin_import.skipped + ' 条既有来源；尚未公开。';
         const link = node('a', '前往管理员未核验 →', 'text-link'); link.href = '/admin#contests'; items.append(link);
       } else feedback.textContent = '保留 ' + data.total + ' 条线索，仅本页可见，未经审核，不进入公共目录。';
-      if (data.counts) feedback.textContent = '返回 ' + data.counts.returned + ' 个网页，排除 ' + data.counts.excluded + ' 条非单场赛事页面，去重 ' + data.counts.duplicates + ' 条，忽略 ' + data.counts.invalid + ' 条无效结果。' + feedback.textContent;
+      if (data.counts) feedback.textContent = '返回 ' + data.counts.returned + ' 个网页，排除 ' + data.counts.excluded + ' 条过期或不合格页面，' + (data.counts.pending || 0) + ' 条参赛范围或报名状态待核，不计入搜索结果' + (data.admin_import ? '（仅存私有待核草稿）' : '') + '；去重 ' + data.counts.duplicates + ' 条，忽略 ' + data.counts.invalid + ' 条无效结果。' + feedback.textContent;
       if (data.excluded?.length) {
         const details = node('details', undefined, 'online-excluded');
         details.append(node('summary', '查看排除的网页与原因（' + data.excluded.length + '）'));
@@ -91,7 +94,7 @@ if (button) {
         }
         items.append(details);
       }
-      if (!data.total) items.append(node('p', '本次没有可收录线索，请查看排除原因或调整条件。', 'helper'));
+      if (!data.total) items.append(node('p', '本次没有符合当前报名条件的技术赛事结果，请查看排除原因或调整条件。', 'helper'));
     } catch (_) {
       if (current !== revision) return;
       feedback.textContent = '在线查找未完成。请检查网络、本地密钥和设备时间，并使用HTTPS或本机地址访问。';
@@ -99,7 +102,7 @@ if (button) {
   });
   window.addEventListener('storage', available);
   queryInput.addEventListener('input', refreshPreview);
-  for (const control of [type, site, freshness]) control?.addEventListener('change', refreshPreview);
+  for (const control of [type, site, freshness, edition]) control?.addEventListener('change', refreshPreview);
   window.addEventListener('pageshow', available);
   window.addEventListener('pagehide', () => { revision += 1; controller?.abort(); running = false; button.disabled = false; items.replaceChildren(); panel.hidden = true; feedback.textContent = ''; });
   available();

@@ -124,16 +124,25 @@ def run_search(
     search_time = _now_iso()
     cards = dedupe(pages_to_cards([r for r in responses if not r.get("error")], search_time=search_time))
     from .contest_scope import classify_scope
-    cards = [c for c in cards if classify_scope(c) != 'out_of_scope']
+    from .freshness import assess_event
+    cards = [c for c in cards if classify_scope(c) != 'out_of_scope' and assess_event(c)['state'] != 'expired']
     # Model errors never block search; states/warnings remain explicit.
     cards, warnings, luna_stats = process_cards(cards, adapter=luna_adapter, enabled=luna_enabled)
+    cards = [c for c in cards if assess_event(c)['state'] != 'expired' and classify_scope(c) != 'out_of_scope']
+    for card in cards:
+        freshness = assess_event(card)
+        if freshness['state'] == 'pending' or classify_scope(card) != 'in_scope':
+            card.publication_state = 'draft'
+            card.verification_notes.append(freshness['reason'] if freshness['state'] == 'pending'
+                                           else '技术参赛任务尚不明确，留待管理员核对。')
     if warnings:
         note = " ".join([note, *warnings]).strip()
     # Persist full collection, never dry-run or hand-curated snapshots.
     if not use_dry:
         upsert_contests([c for c in cards if not c.curated and c.record_origin != "curated"])
     # Drafts must not leak through the public search response/report.
-    cards = [c for c in cards if c.publication_state == "published" and not c.deleted_at]
+    cards = [c for c in cards if c.publication_state == "published" and not c.deleted_at
+             and assess_event(c)['state'] == 'current' and classify_scope(c) == 'in_scope']
     if not use_dry and not cards:
         note = (note + " " if note else "") + "元宝搜索调用成功，但未找到可展示的结果；请调整关键词。"
     top_cards = top_n(cards, top)

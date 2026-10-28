@@ -42,6 +42,7 @@
   const visibility = (contest) => {
     if (contest.publication_state === 'retired' || contest.merged_into) return '游客不可见：已退役或合并。';
     if (contest.publication_state !== 'published') return '游客不可见：当前为草稿。';
+    if (contest.freshness_state && contest.freshness_state !== 'current') return '游客不可见：' + contest.freshness_reason;
     if (!checked(contest) && contest.luna_state === 'verified') return '游客不可见：AI核验完成，待人工确认。';
     if (!checked(contest)) return contest.luna_state === 'stale' ? '游客不可见：内容已变化，需重新核验或完成人工校对。' : '游客不可见：已设为发布，需完成人工校对或确认。';
     return '游客可见：' + reviewLabel(contest) + '，已发布。';

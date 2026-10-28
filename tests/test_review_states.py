@@ -155,6 +155,21 @@ class ReviewStateTests(unittest.TestCase):
         with closing(store._connect()) as conn, conn: store._write(conn,record)
         self.assertFalse(store.get_contest(card['id'],include_drafts=True)['human_reviewed'])
 
+    def test_legacy_stale_review_is_not_public_or_counted_as_verified(self):
+        card = self.card()
+        store.save_admin_contest({'human_reviewed': True}, card['id'])
+        self.assertIsNotNone(store.get_contest(card['id']))
+        # Simulate an older import/direct SQLite edit bypassing the normal writer.
+        with closing(store._connect()) as conn, conn:
+            conn.execute('UPDATE contests SET organizer=? WHERE id=?', ('变更后的主办方', card['id']))
+        self.assertEqual(store.search_contests(), [])
+        self.assertIsNone(store.get_contest(card['id']))
+        self.assertEqual(store.list_admin_contests(verification='verified')['total'], 0)
+        pending = store.list_admin_contests(verification='unverified')
+        self.assertEqual(pending['total'], 1)
+        self.assertFalse(pending['contests'][0]['human_reviewed'])
+        self.assertEqual(curation.create_job(scope='unverified')['items'][0]['contest_id'], card['id'])
+
     def test_human_confirmation_rejects_stale_or_missing_snapshot(self):
         card = self.card()
         url = '/api/admin/contests/' + card['id']

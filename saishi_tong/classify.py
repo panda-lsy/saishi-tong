@@ -208,7 +208,7 @@ def enrich_card(card, *, today: date | None = None):
         card.contest_name = heuristic_contest_name(card.raw_title or card.name,
                                                      card.source_excerpt or card.snippet)
     # Curated facts, Luna verification and OpenClaw 整理 (review) must not be replaced by heuristics.
-    if not getattr(card, "curated", False) and getattr(card, "luna_state", "pending") not in {"verified", "stale", "review"} and not getattr(card, "human_reviewed_at", ""):
+    if getattr(card, "status", "") != "已结束" and not getattr(card, "curated", False) and getattr(card, "luna_state", "pending") not in {"verified", "stale", "review"} and not getattr(card, "human_reviewed_at", ""):
         card.status, card.format = classify_contest(card.name, card.source_excerpt or card.snippet, card.deadline,
                                                    card.published, today=today)
     return card

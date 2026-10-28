@@ -29,7 +29,7 @@ class DeleteLocationTests(unittest.TestCase):
     def card(self,key='a',**changes):
         c=ContestCard(name='线下开发赛'+key,contest_name='线下开发赛'+key,
                       source_url='https://example.test/'+key,search_time='2026-10-24T00:00:00Z',
-                      curated=True,format='线下',status='报名中',location_scope='未知')
+                      curated=True,format='线下',status='报名中',location_scope='未知',deadline='2099-11-22')
         for k,v in changes.items():setattr(c,k,v)
         store.upsert_contests([c]);store.save_admin_contest({'human_reviewed':True},c.id)
         return store.get_contest(c.id,include_drafts=True)
@@ -60,6 +60,18 @@ class DeleteLocationTests(unittest.TestCase):
         trash=json.loads(self.browser.request('/api/admin/trash')[2])['contests'][0]
         self.assertEqual(self.browser.request(url+'/restore','POST',body,csrf)[0],409)
         self.assertEqual(self.browser.request(url+'/restore','POST',{'expected_fingerprint':trash['record_fingerprint']},csrf)[0],200)
+
+    def test_worker_archives_ended_rows_recoverably_and_keeps_current_rows(self):
+        ended = self.card('expired', deadline='2026-10-25')
+        current = self.card('current', deadline='2026-11-30')
+        ended_id = ended['id']; current_id = current['id']
+        with patch('saishi_tong.classify.current_date', return_value=__import__('datetime').date(2026, 10, 26)):
+            self.assertEqual(store.archive_ended(path=self.path), [ended_id])
+            self.assertIsNone(store.get_contest(ended_id, path=self.path))
+            self.assertEqual(next(row for row in store.list_deleted_contests(self.path) if row['id'] == ended_id)['deadline'], '2026-10-25')
+            self.assertEqual(store.get_contest(current_id, path=self.path)['deadline'], '2026-11-30')
+        with closing(store._connect(self.path)) as conn:
+            self.assertEqual(conn.execute("SELECT action FROM contest_deletion_audit WHERE contest_id=?", (ended_id,)).fetchone()[0], 'auto_expire')
 
     def test_deleted_record_cannot_be_reimported_or_curated(self):
         original=self.card();store.change_deleted_state(original['id'],original['record_fingerprint'])
@@ -94,7 +106,7 @@ class DeleteLocationTests(unittest.TestCase):
 
     def test_additive_geography_migration_preserves_valid_human_confirmation(self):
         c=ContestCard(name='已人工确认的旧赛',id='old',contest_name='已人工确认的旧赛',source_url='https://example.test/old',
-                      curated=True,search_time='2026-10-24T00:00:00Z',human_reviewed_at='2026-10-23T00:00:00Z')
+                      status='报名中',curated=True,search_time='2026-10-24T00:00:00Z',deadline='2099-11-22',human_reviewed_at='2026-10-23T00:00:00Z')
         c.human_reviewed_hash=facts_hash(c,include_location=False)
         old_columns=[n for n in store.COLUMNS if n not in {'location_scope','deleted_at','ai_reviewed_at'}]
         with closing(sqlite3.connect(self.path)) as conn,conn:

@@ -12,6 +12,9 @@ assert.equal(JSON.parse(signed.payload).Query, '中文黑客松');
 const directed = await signRequest('征文 报名', 'AKIDsyntheticTestOnly00000000', 'synthetic-key-only', 1792782000, {site:'csdn.net',freshness:'d30'});
 assert.deepEqual(JSON.parse(directed.payload),{Query:'征文 报名',Cnt:10,Mode:0,Freshness:'d30',Site:'csdn.net'});
 assert.notEqual(directed.authorization,signed.authorization);
+const lite = await signRequest('征文 报名', 'AKIDsyntheticTestOnly00000000', 'synthetic-key-only', 1792782000, {site:'csdn.net',freshness:'d30',edition:'lite'});
+assert.deepEqual(JSON.parse(lite.payload),{Query:'征文 报名',Freshness:'d30',Site:'csdn.net'});
+assert.notEqual(lite.authorization,directed.authorization);
 assert.equal(directedQuery('征文','essay'),'征文 技术征文 软件开发 技术实践 报名 参赛规则 截止时间');
 assert.equal(directedQuery('文学','essay'),'文学 技术征文 软件开发 技术实践 报名 参赛规则 截止时间');
 assert(!directedQuery('文学','essay').includes('AI'));
@@ -26,7 +29,7 @@ class Node {
   async fire(k){await Promise.all((this.listeners[k] || []).map(f=>f()));}
 }
 function fixture({complete=true,admin=false,fail=false,excluded=false}={}){
-  const nodes=Object.fromEntries(['online-find','online-feedback','online-results','online-result-list','online-options','online-type','online-site','online-freshness','online-query-preview','q'].map(k=>[k,new Node()]));
+  const nodes=Object.fromEntries(['online-find','online-feedback','online-results','online-result-list','online-options','online-type','online-site','online-freshness','online-edition','online-query-preview','q'].map(k=>[k,new Node()]));
   const window=new Node(), requests=[],storage=new Map();
   if(complete){storage.set('TENCENTCLOUD_SECRET_ID','synthetic-id-only');storage.set('TENCENTCLOUD_SECRET_KEY','synthetic-key-only');}
   nodes.q.value='中文黑客松';
@@ -62,11 +65,11 @@ function fixture({complete=true,admin=false,fail=false,excluded=false}={}){
 }
 {
   const s=fixture({excluded:true});s.nodes.q.value='文学';s.nodes['online-type'].value='essay';
-  s.nodes['online-site'].value='csdn.net';s.nodes['online-freshness'].value='d30';
+  s.nodes['online-site'].value='csdn.net';s.nodes['online-freshness'].value='d30';s.nodes['online-edition'].value='lite';
   await s.nodes['online-type'].fire('change');assert.equal(s.requests.length,0);
   assert.match(s.nodes['online-query-preview'].textContent,/文学 技术征文 软件开发 技术实践 报名/);
   await s.nodes['online-find'].fire('click');
-  assert.equal(s.signedOptions[0].site,'csdn.net');assert.equal(s.signedOptions[0].freshness,'d30');
+  assert.equal(s.signedOptions[0].site,'csdn.net');assert.equal(s.signedOptions[0].freshness,'d30');assert.equal(s.signedOptions[0].edition,'lite');
   assert.equal(s.requests.filter(r=>r.path==='/api/online-search').length,1);
   assert.match(s.nodes['online-feedback'].textContent,/返回 2 个网页，排除 1/);
   assert(s.nodes['online-result-list'].children.some(c=>c.children.some(v=>v.textContent.includes('查看排除'))));

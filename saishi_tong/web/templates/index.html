@@ -11,10 +11,11 @@
 <details id="online-options" class="online-options" hidden><summary>在线查找条件</summary><div class="online-option-grid">
 <label for="online-type">赛事类型<select id="online-type"><option value="">不限技术赛事类型</option><option value="hackathon">黑客松</option><option value="essay">技术征文</option><option value="developer">开发者竞赛</option></select></label>
 <label for="online-site">来源范围<select id="online-site"><option value="">全网</option><option value="csdn.net">CSDN</option><option value="modelscope.cn">魔搭</option></select></label>
-<label for="online-freshness">网页发布时间<select id="online-freshness"><option value="m3">近三个月</option><option value="d30">近30天</option><option value="y1">近一年</option></select></label></div>
-<p id="online-query-preview" class="helper"></p><p class="helper">每次点击调用1次元宝搜索，最多返回10个网页；修改条件不会自动搜索。发布时间不等于报名截止，站点限定不代表官方认证。</p></details>
+<label for="online-freshness">网页发布时间<select id="online-freshness"><option value="m3">本月及前两个月</option><option value="d30">最近30天（含今天）</option><option value="y1">本自然年</option></select></label>
+<label for="online-edition">账号已开通的搜索版本<select id="online-edition"><option value="standard">标准版 / 旗舰版</option><option value="lite">极速版</option></select></label></div>
+<p id="online-query-preview" class="helper"></p><p class="helper">版本选项只调整请求参数，不能切换账号已开通的服务。每次点击调用1次元宝搜索，最多展示10个网页；修改条件不会自动搜索。发布时间不等于报名截止，站点限定不代表官方认证。</p></details>
 <section id="online-results" class="online-results" aria-labelledby="online-title" hidden><h3 id="online-title">在线查找结果</h3><p id="online-feedback" class="helper" role="status" aria-live="polite"></p><div id="online-result-list"></div></section></section>
 <section class="section" aria-labelledby="recent-title"><div class="section-heading"><div><p class="eyebrow">THE DIRECTORY / 公开线索</p><h2 id="recent-title">正在报名<span class="accent">。</span></h2></div><a class="text-link" href="/contests">全部赛事 ↗</a></div><p class="section-description">只展示报名中和即将截止的已核验赛事；实际报名资格与开放状态仍以官方为准。</p>
-{% if recent_contests|default([]) %}<div class="contest-grid">{% for c in recent_contests %}{{ card(c, loop.index) }}{% endfor %}</div>{% else %}<div class="empty"><span class="empty-mark" aria-hidden="true">↗</span><h3>当前暂无报名中的赛事</h3><p>可以进入完整赛事目录查看往届活动，或之后再来寻找新机会。</p><a href="/contests" class="text-link">打开赛事目录 →</a></div>{% endif %}</section>
+{% if recent_contests|default([]) %}<div class="contest-grid">{% for c in recent_contests %}{{ card(c, loop.index) }}{% endfor %}</div>{% else %}<div class="empty"><span class="empty-mark" aria-hidden="true">↗</span><h3>当前暂无报名中的赛事</h3><p>赛事目录仅展示截止日期明确且仍在征集期内的技术赛事。</p><a href="/contests" class="text-link">打开赛事目录 →</a></div>{% endif %}</section>
 <section class="principles" aria-label="情报使用指南"><div><span>01 / 发现</span><h3>用你的话，找你的赛。</h3><p>搜索本地收录，通过状态与参与形式缩小范围。</p></div><div><span>02 / 核验</span><h3>每条线索，都有出处。</h3><p>保留来源与检索时间，提取不到的字段坦诚标记待核验。</p></div><div><span>03 / 出发</span><h3>把时间，留给创造。</h3><p>核对官方规则后自行报名，不代报名、不承诺报名可用。</p></div></section>
 {% endblock %}

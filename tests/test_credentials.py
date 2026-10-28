@@ -45,7 +45,7 @@ class CredentialTests(unittest.TestCase):
     def test_web_ignores_browser_credentials_and_uses_local_database(self):
         from saishi_tong.parse import ContestCard
         from saishi_tong import service,store
-        store.upsert_contests([reviewed(ContestCard(name='本地赛事',luna_state='verified',source_url='https://example.test/local',search_time='2026-10-21T12:00:00Z'))])
+        store.upsert_contests([reviewed(ContestCard(name='本地赛事',status='报名中',luna_state='verified',source_url='https://example.test/local',search_time='2026-10-21T12:00:00Z',deadline='2099-11-22'))])
         variants=[({'q':'本地','TENCENTCLOUD_SECRET_ID':'synthetic-user-id','TENCENTCLOUD_SECRET_KEY':'synthetic-user-key'},[]),
                   ({'q':'本地'},[(b'x-tencent-secret-id',b'header-id'),(b'x-tencent-secret-key',b'header-key')]),
                   ({'q':'本地','TENCENTCLOUD_SECRET_ID':'partial'},[]),

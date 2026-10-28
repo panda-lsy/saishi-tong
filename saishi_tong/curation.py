@@ -252,6 +252,7 @@ def _similar_names(contest_id, path=None, limit=12):
 
 
 def claim_job(worker="jarvis", path=None):
+    store.archive_ended(path=path)
     conn = _conn(path)
     try:
         with conn:

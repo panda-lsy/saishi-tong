@@ -36,6 +36,7 @@ def source_domain(url):
 TEMPLATES.env.filters["source_domain"] = source_domain
 STATIC = ROOT / "static"
 STATUS_OPTIONS = CATALOG_STATUSES
+PUBLIC_STATUS_OPTIONS = tuple(status for status in CATALOG_STATUSES if status != '已结束')
 FORMAT_OPTIONS = CATALOG_FORMATS
 
 
@@ -91,7 +92,7 @@ def directory_context(request: Request, q: str = "", status="", format="", locat
         if not isinstance(q, str) or len(q) > 2000:
             raise ValueError
         q = q.strip()
-        statuses = catalog_filter_values(status, STATUS_OPTIONS)
+        statuses = catalog_filter_values(status, CATALOG_STATUSES)
         formats = catalog_filter_values(format, FORMAT_OPTIONS)
         locations = catalog_filter_values(location, CATALOG_LOCATIONS)
         if locations and not set(formats) & {"线下", "混合"}: raise ValueError
@@ -123,7 +124,7 @@ def directory_context(request: Request, q: str = "", status="", format="", locat
             "status": legacy_echo(statuses), "format": legacy_echo(formats),
             "statuses": statuses, "formats": formats, "locations": locations, "location": legacy_echo(locations), "applied_filters": applied,
             "location_options": CATALOG_LOCATIONS, "show_locations": bool(set(formats) & {"线下", "混合"}),
-            "status_options": STATUS_OPTIONS, "format_options": FORMAT_OPTIONS}
+            "status_options": PUBLIC_STATUS_OPTIONS, "format_options": FORMAT_OPTIONS}
 
 
 async def directory_filters(request: Request) -> dict:

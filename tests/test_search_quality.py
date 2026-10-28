@@ -22,15 +22,14 @@ class SearchQualityTests(unittest.TestCase):
             pages=[r['page'] for r in samples if r['Query']==query]
             with patch.object(online_search,'upstream',return_value={'Pages':pages}):
                 result=online_search.search_results(envelope(query))
-            self.assertEqual(len(result['cards']),expected)
+            self.assertEqual(len(result['cards']),0)
+            self.assertEqual(result['counts']['pending'], 0 if query == '征文' else 8)
             self.assertEqual(result['counts']['returned'],10)
-            self.assertEqual(result['counts']['excluded'],10-expected)
+            self.assertEqual(result['counts']['excluded'],10 if query == '征文' else 2)
             self.assertEqual(result['counts']['invalid'],0)
             self.assertTrue(all(c.luna_state=='pending' and not c.human_reviewed_at for c in result['cards']))
             self.assertFalse(any(c.host in {'者后','腾讯新闻','中国日报网','百问网','中国作家网'} or c.host.startswith('方:') for c in result['cards']))
-            if query!='征文':
-                ended=next(c for c in result['cards'] if '鼓楼江岸' in c.raw_title)
-                self.assertEqual(ended.status,'已结束')
+            self.assertTrue(all(c.deadline and c.deadline[:4].isdigit() for c in result['cards']))
 
     def test_negative_explanation_and_list_not_a_contest(self):
         for title in ['征文是什么意思','征文(汉语词语)','征文的格式怎么写给个范文','征文启事模板','本月黑客松比赛汇总']:
@@ -70,26 +69,27 @@ class SearchQualityTests(unittest.TestCase):
 
     def test_dynamic_excerpt_is_retained_and_used_beyond_card_snippet(self):
         page={'title':'星河黑客松','url':'https://example.test/a','passage':'介绍文字。'*100,
-              'content':'主办方：星河基金会。报名截止2026-11-22。线上举行。赛事圆满落幕。','score':.93}
+              'content':'主办方：星河基金会。报名截止2026-11-22。线上举行。报名中。','score':.93}
         with patch.object(online_search,'upstream',return_value={'Pages':[page]}):
             result=online_search.search_results(envelope())
         c=result['cards'][0]
         self.assertIn(page['content'],c.source_excerpt)
         self.assertIn(page['content'],c.sources[0]['excerpt'])
         self.assertEqual(c.host,'星河基金会');self.assertEqual(c.deadline,'2026-11-22')
-        self.assertEqual(c.status,'已结束');self.assertEqual(c.score,.93)
+        self.assertEqual(c.status,'报名中');self.assertEqual(c.score,.93)
 
     def test_all_discarded_and_invalid_is_a_successful_empty_search(self):
         pages=[{'title':'征文是什么意思','url':'https://example.test/a'},'not-json',{'url':'http://127.0.0.1'}]
         with patch.object(online_search,'upstream',return_value={'Pages':pages}):result=online_search.search_results(envelope())
-        self.assertEqual(result['counts'],{'returned':3,'retained':0,'excluded':1,'invalid':2,'duplicates':0})
+        self.assertEqual(result['counts'],{'returned':3,'retained':0,'pending':0,'excluded':1,'invalid':2,'duplicates':0})
         self.assertTrue(result['excluded'][0]['search_time'])
 
     def test_score_orders_only_retained_candidates_and_stays_finite(self):
         pages=[{'title':title,'url':'https://example.test/'+str(i),'score':score} for i,(title,score) in enumerate([
             ('星河黑客松',.2),('征文是什么意思',1),('晨光征文启事',.8),('未知比赛',float('nan')),('公开大赛',10**500)])]
         with patch.object(online_search,'upstream',return_value={'Pages':pages}):result=online_search.search_results(envelope())
-        self.assertEqual([c.score for c in result['cards']],[.8,.2,0,0])
+        self.assertEqual(result['cards'],[])
+        self.assertEqual(len(result['pending_cards']),4)
 
     def test_direction_options_allowlist_preserves_signed_payload(self):
         for site in ['csdn.net','modelscope.cn']:

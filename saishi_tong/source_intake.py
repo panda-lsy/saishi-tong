@@ -201,11 +201,18 @@ def commit(job_id, claim_key, result, model='', worker='jarvis', path=None):
             if classify_scope(card)=='out_of_scope':
                 skipped += 1
                 continue
+            from .freshness import assess_event
+            freshness = assess_event(card)
+            if freshness['state'] == 'expired':
+                skipped += 1
+                continue
             card.luna_model = 'openclaw/saishi:' + model
             card.luna_verified_at = curation._utc()
             card.luna_input_hash = input_hash(card)
             card.uncertain_fields = checked['uncertain']
             card.verification_notes = ['来源解析导入；尚待逐条核验和人工发布。', '来源入口：' + row['source_url']] + checked['notes']
+            if freshness['state'] == 'pending':
+                card.verification_notes.append(freshness['reason'])
             store._write(conn, card)
             identities.add(normalized_url(url))
             output.append({'id': card.id, 'contest_name': card.contest_name, 'source_url': url, 'search_time': card.search_time})

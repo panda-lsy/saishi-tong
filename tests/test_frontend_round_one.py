@@ -4,6 +4,7 @@ import importlib
 import json
 import os
 import tempfile
+from datetime import date
 import unittest
 from html.parser import HTMLParser
 from pathlib import Path
@@ -38,6 +39,8 @@ class RoundOneTests(unittest.TestCase):
         self.addCleanup(env.stop)
         self.web = importlib.import_module('saishi_tong.web.app')
         self.browser = Browser(self.web.app)
+        today = patch('saishi_tong.classify.current_date', return_value=date(2026, 10, 26))
+        today.start(); self.addCleanup(today.stop)
 
     def card(self, key='visible', **changes):
         values = dict(name='测试开发者挑战赛', contest_name='测试开发者挑战赛', id=key,
@@ -82,13 +85,19 @@ class RoundOneTests(unittest.TestCase):
         self.assertIn('AI&amp;&lt;&gt;', html)
 
     def test_detail_signup_entry_handles_missing_and_ended(self):
+        self.card('ended', status='已结束', deadline='2025-01-01')
+        self.assertEqual(self.browser.request('/contests/ended')[0], 404)
         for key, changes, expected in [
             ('open', {}, '前往官方报名页'),
-            ('ended', {'status': '已结束', 'deadline': '2025-01-01'}, '查看官方活动页'),
             ('missing', {'signup_url': ''}, '报名入口待核验'),
             ('unsafe', {'signup_url': 'javascript:alert(1)'}, '报名入口待核验'),
         ]:
             self.card(key, **changes)
+            if key == 'unsafe':
+                # Confirm the stored, sanitized facts, not the discarded URL.
+                saved = store.get_contest(key, include_drafts=True)
+                store.save_admin_contest({'human_reviewed': True,
+                    'expected_fingerprint': saved['record_fingerprint']}, key)
             code, _, body = self.browser.request('/contests/' + key)
             self.assertEqual(code, 200)
             html = body.decode()
